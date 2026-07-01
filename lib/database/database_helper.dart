@@ -24,9 +24,37 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'bimbingin.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add target_bimbingan table if upgrading from v1
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS target_bimbingan (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          mahasiswa_id INTEGER NOT NULL UNIQUE,
+          target_selesai TEXT NOT NULL,
+          created_by INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (mahasiswa_id) REFERENCES users(id),
+          FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+      ''');
+
+      // Add catatan_mahasiswa and status menunggu_konfirmasi support
+      // Alter progres_skripsi to add catatan_mahasiswa column
+      try {
+        await db.execute(
+            'ALTER TABLE progres_skripsi ADD COLUMN catatan_mahasiswa TEXT');
+      } catch (_) {}
+
+      // Seed target for existing mahasiswa
+      await _seedTargetBimbingan(db);
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -83,6 +111,7 @@ class DatabaseHelper {
         tahap TEXT NOT NULL,
         status TEXT DEFAULT 'belum',
         catatan TEXT,
+        catatan_mahasiswa TEXT,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (mahasiswa_id) REFERENCES users(id),
         FOREIGN KEY (dosen_id) REFERENCES users(id)
@@ -101,6 +130,18 @@ class DatabaseHelper {
         FOREIGN KEY (booking_id) REFERENCES booking(id),
         FOREIGN KEY (dosen_id) REFERENCES users(id),
         FOREIGN KEY (mahasiswa_id) REFERENCES users(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE target_bimbingan (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mahasiswa_id INTEGER NOT NULL UNIQUE,
+        target_selesai TEXT NOT NULL,
+        created_by INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (mahasiswa_id) REFERENCES users(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
       )
     ''');
 
@@ -133,7 +174,7 @@ class DatabaseHelper {
       'role': 'mahasiswa',
       'jurusan': 'Sistem Informasi'
     });
-    
+
     await db.insert('users', {
       'nama': 'Dr. Heru Wijaya',
       'nim_nip': '198001012005011001',
@@ -162,8 +203,9 @@ class DatabaseHelper {
 
     // Jadwal Dosen
     String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    String tomorrow = DateFormat('yyyy-MM-dd').format(DateTime.now().add(Duration(days: 1)));
-    
+    String tomorrow =
+        DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)));
+
     await db.insert('jadwal_dosen', {
       'dosen_id': 4,
       'hari': 'Senin',
@@ -215,25 +257,46 @@ class DatabaseHelper {
       'created_at': DateTime.now().toIso8601String()
     });
 
-    // Progres Skripsi
-    await db.insert('progres_skripsi', {
-      'mahasiswa_id': 1,
-      'dosen_id': 4,
-      'judul_skripsi': 'Sistem Prediksi Cuaca Berbasis AI',
-      'tahap': 'bab1',
-      'status': 'revisi',
-      'catatan': 'Perbaiki latar belakang',
-      'updated_at': DateTime.now().toIso8601String()
-    });
-    await db.insert('progres_skripsi', {
-      'mahasiswa_id': 2,
-      'dosen_id': 4,
-      'judul_skripsi': 'Aplikasi Booking Antrean Berbasis Mobile',
-      'tahap': 'bab3',
-      'status': 'acc',
-      'catatan': 'Lanjut ke bab 4',
-      'updated_at': DateTime.now().toIso8601String()
-    });
+    // Progres Skripsi - semua tahapan untuk mahasiswa 1
+    final tahapan = ['bab1', 'bab2', 'bab3', 'seminar_proposal', 'bab4_5', 'sidang', 'selesai'];
+    final statusTahap = ['revisi', 'belum', 'belum', 'belum', 'belum', 'belum', 'belum'];
+    final catatanTahap = [
+      'Perbaiki latar belakang dan rumusan masalah.',
+      null, null, null, null, null, null
+    ];
+
+    for (int i = 0; i < tahapan.length; i++) {
+      await db.insert('progres_skripsi', {
+        'mahasiswa_id': 1,
+        'dosen_id': 4,
+        'judul_skripsi': 'Sistem Prediksi Cuaca Berbasis AI',
+        'tahap': tahapan[i],
+        'status': statusTahap[i],
+        'catatan': catatanTahap[i],
+        'catatan_mahasiswa': null,
+        'updated_at': DateTime.now().toIso8601String()
+      });
+    }
+
+    // Progres Skripsi - semua tahapan untuk mahasiswa 2
+    final statusTahap2 = ['acc', 'acc', 'acc', 'belum', 'belum', 'belum', 'belum'];
+    final catatanTahap2 = [
+      'Pendahuluan bagus.', 'Tinjauan pustaka lengkap.', 'Metodologi sudah sesuai.',
+      null, null, null, null
+    ];
+
+    for (int i = 0; i < tahapan.length; i++) {
+      await db.insert('progres_skripsi', {
+        'mahasiswa_id': 2,
+        'dosen_id': 4,
+        'judul_skripsi': 'Aplikasi Booking Antrean Berbasis Mobile',
+        'tahap': tahapan[i],
+        'status': statusTahap2[i],
+        'catatan': catatanTahap2[i],
+        'catatan_mahasiswa': null,
+        'updated_at': DateTime.now().toIso8601String()
+      });
+    }
 
     // Validasi Kehadiran
     await db.insert('validasi_kehadiran', {
@@ -244,6 +307,43 @@ class DatabaseHelper {
       'catatan': null,
       'validated_at': null
     });
+
+    // Target Bimbingan
+    await _seedTargetBimbingan(db);
+  }
+
+  Future<void> _seedTargetBimbingan(Database db) async {
+    final targetAdr =
+        DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 45)));
+    final targetLia =
+        DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 120)));
+    final targetBudi =
+        DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 8)));
+
+    try {
+      await db.insert('target_bimbingan', {
+        'mahasiswa_id': 1,
+        'target_selesai': targetAdr,
+        'created_by': 6,
+        'created_at': DateTime.now().toIso8601String()
+      });
+    } catch (_) {}
+    try {
+      await db.insert('target_bimbingan', {
+        'mahasiswa_id': 2,
+        'target_selesai': targetLia,
+        'created_by': 6,
+        'created_at': DateTime.now().toIso8601String()
+      });
+    } catch (_) {}
+    try {
+      await db.insert('target_bimbingan', {
+        'mahasiswa_id': 3,
+        'target_selesai': targetBudi,
+        'created_by': 6,
+        'created_at': DateTime.now().toIso8601String()
+      });
+    } catch (_) {}
   }
 
   // === USERS ===
@@ -254,37 +354,45 @@ class DatabaseHelper {
 
   Future<UserModel?> getUserById(int id) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('users', where: 'id = ?', whereArgs: [id]);
+    final List<Map<String, dynamic>> maps =
+        await db.query('users', where: 'id = ?', whereArgs: [id]);
     if (maps.isNotEmpty) return UserModel.fromMap(maps.first);
     return null;
   }
 
   Future<UserModel?> login(String nimNip, String password) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'users',
-      where: 'nim_nip = ? AND password = ?',
-      whereArgs: [nimNip, password],
-    );
-    if (maps.isNotEmpty) return UserModel.fromMap(maps.first);
-    return null;
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'users',
+        where: 'nim_nip = ? AND password = ?',
+        whereArgs: [nimNip, password],
+      );
+      if (maps.isNotEmpty) return UserModel.fromMap(maps.first);
+      return null;
+    } catch (e) {
+      return null;
+    }
   }
 
   Future<List<UserModel>> getAllDosen() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('users', where: 'role = ?', whereArgs: ['dosen']);
+    final List<Map<String, dynamic>> maps =
+        await db.query('users', where: 'role = ?', whereArgs: ['dosen']);
     return List.generate(maps.length, (i) => UserModel.fromMap(maps[i]));
   }
 
   Future<List<UserModel>> getAllMahasiswa() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('users', where: 'role = ?', whereArgs: ['mahasiswa']);
+    final List<Map<String, dynamic>> maps =
+        await db.query('users', where: 'role = ?', whereArgs: ['mahasiswa']);
     return List.generate(maps.length, (i) => UserModel.fromMap(maps[i]));
   }
 
   Future<int> updateUser(UserModel user) async {
     final db = await database;
-    return await db.update('users', user.toMap(), where: 'id = ?', whereArgs: [user.id]);
+    return await db
+        .update('users', user.toMap(), where: 'id = ?', whereArgs: [user.id]);
   }
 
   Future<int> deleteUser(int id) async {
@@ -300,7 +408,8 @@ class DatabaseHelper {
 
   Future<List<JadwalModel>> getJadwalByDosen(int dosenId) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('jadwal_dosen', where: 'dosen_id = ?', whereArgs: [dosenId]);
+    final List<Map<String, dynamic>> maps = await db
+        .query('jadwal_dosen', where: 'dosen_id = ?', whereArgs: [dosenId]);
     return List.generate(maps.length, (i) => JadwalModel.fromMap(maps[i]));
   }
 
@@ -314,7 +423,8 @@ class DatabaseHelper {
     return List.generate(maps.length, (i) => JadwalModel.fromMap(maps[i]));
   }
 
-  Future<List<JadwalModel>> getJadwalByTanggal(int dosenId, String tanggal) async {
+  Future<List<JadwalModel>> getJadwalByTanggal(
+      int dosenId, String tanggal) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'jadwal_dosen',
@@ -326,12 +436,14 @@ class DatabaseHelper {
 
   Future<int> updateStatusJadwal(int id, String status) async {
     final db = await database;
-    return await db.update('jadwal_dosen', {'status': status}, where: 'id = ?', whereArgs: [id]);
+    return await db.update('jadwal_dosen', {'status': status},
+        where: 'id = ?', whereArgs: [id]);
   }
 
   Future<int> updateJadwal(JadwalModel jadwal) async {
     final db = await database;
-    return await db.update('jadwal_dosen', jadwal.toMap(), where: 'id = ?', whereArgs: [jadwal.id]);
+    return await db.update('jadwal_dosen', jadwal.toMap(),
+        where: 'id = ?', whereArgs: [jadwal.id]);
   }
 
   Future<int> deleteJadwal(int id) async {
@@ -408,14 +520,12 @@ class DatabaseHelper {
     return List.generate(maps.length, (i) => BookingModel.fromMap(maps[i]));
   }
 
-  Future<int> updateStatusBooking(int id, String status, String? catatanStaf) async {
+  Future<int> updateStatusBooking(
+      int id, String status, String? catatanStaf) async {
     final db = await database;
     return await db.update(
-      'booking', 
-      {'status': status, 'catatan_staf': catatanStaf}, 
-      where: 'id = ?', 
-      whereArgs: [id]
-    );
+        'booking', {'status': status, 'catatan_staf': catatanStaf},
+        where: 'id = ?', whereArgs: [id]);
   }
 
   Future<BookingModel?> getBookingById(int id) async {
@@ -448,9 +558,28 @@ class DatabaseHelper {
 
   Future<ProgresModel?> getPregresByMahasiswa(int mahasiswaId) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('progres_skripsi', where: 'mahasiswa_id = ?', whereArgs: [mahasiswaId]);
+    final List<Map<String, dynamic>> maps = await db.query(
+        'progres_skripsi',
+        where: 'mahasiswa_id = ?',
+        whereArgs: [mahasiswaId]);
     if (maps.isNotEmpty) return ProgresModel.fromMap(maps.first);
     return null;
+  }
+
+  /// Ambil semua tahap progres untuk satu mahasiswa
+  Future<List<ProgresModel>> getAllTahapByMahasiswa(int mahasiswaId) async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'progres_skripsi',
+        where: 'mahasiswa_id = ?',
+        whereArgs: [mahasiswaId],
+        orderBy: 'id ASC',
+      );
+      return List.generate(maps.length, (i) => ProgresModel.fromMap(maps[i]));
+    } catch (e) {
+      return [];
+    }
   }
 
   Future<List<ProgresModel>> getAllProgresByDosen(int dosenId) async {
@@ -464,24 +593,104 @@ class DatabaseHelper {
     return List.generate(maps.length, (i) => ProgresModel.fromMap(maps[i]));
   }
 
-  Future<int> updateProgres(ProgresModel progres) async {
-    final db = await database;
-    return await db.update('progres_skripsi', progres.toMap(), where: 'id = ?', whereArgs: [progres.id]);
+  /// Ambil semua tahap per mahasiswa untuk dosen (digroup per mahasiswa)
+  Future<Map<int, List<ProgresModel>>> getAllTahapGroupedByMahasiswaForDosen(
+      int dosenId) async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.rawQuery('''
+        SELECT p.*, u.nama as nama_mahasiswa
+        FROM progres_skripsi p
+        JOIN users u ON p.mahasiswa_id = u.id
+        WHERE p.dosen_id = ?
+        ORDER BY p.mahasiswa_id ASC, p.id ASC
+      ''', [dosenId]);
+
+      final Map<int, List<ProgresModel>> grouped = {};
+      for (final map in maps) {
+        final progres = ProgresModel.fromMap(map);
+        grouped.putIfAbsent(progres.mahasiswaId, () => []);
+        grouped[progres.mahasiswaId]!.add(progres);
+      }
+      return grouped;
+    } catch (e) {
+      return {};
+    }
   }
 
-  Future<int> updateTahapProgres(int id, String tahap, String status, String? catatan) async {
+  /// Count tahap yang menunggu konfirmasi untuk dosen
+  Future<int> countMenungguKonfirmasiByDosen(int dosenId) async {
+    try {
+      final db = await database;
+      final result = await db.rawQuery('''
+        SELECT COUNT(*) as count FROM progres_skripsi
+        WHERE dosen_id = ? AND status = 'menunggu_konfirmasi'
+      ''', [dosenId]);
+      return (result.first['count'] as int?) ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<int> updateProgres(ProgresModel progres) async {
+    final db = await database;
+    return await db.update('progres_skripsi', progres.toMap(),
+        where: 'id = ?', whereArgs: [progres.id]);
+  }
+
+  Future<int> updateTahapProgres(
+      int id, String tahap, String status, String? catatan) async {
     final db = await database;
     return await db.update(
-      'progres_skripsi', 
+      'progres_skripsi',
       {
         'tahap': tahap,
         'status': status,
         'catatan': catatan,
         'updated_at': DateTime.now().toIso8601String()
-      }, 
-      where: 'id = ?', 
-      whereArgs: [id]
+      },
+      where: 'id = ?',
+      whereArgs: [id],
     );
+  }
+
+  /// Update status dan catatan dosen pada satu tahap progres
+  Future<int> updateStatusProgresById(
+      int id, String status, String? catatan) async {
+    try {
+      final db = await database;
+      return await db.update(
+        'progres_skripsi',
+        {
+          'status': status,
+          'catatan': catatan,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Mahasiswa ajukan ke dosen (ubah status jadi 'menunggu_konfirmasi')
+  Future<int> ajukanKeDosen(int id, String catatanMahasiswa) async {
+    try {
+      final db = await database;
+      return await db.update(
+        'progres_skripsi',
+        {
+          'status': 'menunggu_konfirmasi',
+          'catatan_mahasiswa': catatanMahasiswa,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    } catch (e) {
+      return 0;
+    }
   }
 
   // === VALIDASI KEHADIRAN ===
@@ -492,28 +701,93 @@ class DatabaseHelper {
 
   Future<ValidasiModel?> getValidasiByBooking(int bookingId) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('validasi_kehadiran', where: 'booking_id = ?', whereArgs: [bookingId]);
+    final List<Map<String, dynamic>> maps = await db
+        .query('validasi_kehadiran', where: 'booking_id = ?', whereArgs: [bookingId]);
     if (maps.isNotEmpty) return ValidasiModel.fromMap(maps.first);
     return null;
   }
 
   Future<List<ValidasiModel>> getValidasiByDosen(int dosenId) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('validasi_kehadiran', where: 'dosen_id = ?', whereArgs: [dosenId]);
+    final List<Map<String, dynamic>> maps = await db
+        .query('validasi_kehadiran', where: 'dosen_id = ?', whereArgs: [dosenId]);
     return List.generate(maps.length, (i) => ValidasiModel.fromMap(maps[i]));
   }
 
-  Future<int> updateValidasi(int id, String statusHadir, String? catatan) async {
+  Future<int> updateValidasi(
+      int id, String statusHadir, String? catatan) async {
     final db = await database;
     return await db.update(
-      'validasi_kehadiran', 
+      'validasi_kehadiran',
       {
         'status_hadir': statusHadir,
         'catatan': catatan,
         'validated_at': DateTime.now().toIso8601String()
-      }, 
-      where: 'id = ?', 
-      whereArgs: [id]
+      },
+      where: 'id = ?',
+      whereArgs: [id],
     );
+  }
+
+  // === TARGET BIMBINGAN ===
+  Future<Map<String, dynamic>?> getTargetByMahasiswa(int mahasiswaId) async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'target_bimbingan',
+        where: 'mahasiswa_id = ?',
+        whereArgs: [mahasiswaId],
+      );
+      if (maps.isNotEmpty) return maps.first;
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAllTargetByDosen(int dosenId) async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.rawQuery('''
+        SELECT t.*, u.nama as nama_mahasiswa, u.nim_nip
+        FROM target_bimbingan t
+        JOIN users u ON t.mahasiswa_id = u.id
+        JOIN progres_skripsi p ON p.mahasiswa_id = t.mahasiswa_id
+        WHERE p.dosen_id = ?
+        GROUP BY t.mahasiswa_id
+      ''', [dosenId]);
+      return maps;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<int> upsertTarget(
+      int mahasiswaId, String targetSelesai, int createdBy) async {
+    try {
+      final db = await database;
+      final existing = await getTargetByMahasiswa(mahasiswaId);
+      if (existing != null) {
+        return await db.update(
+          'target_bimbingan',
+          {
+            'target_selesai': targetSelesai,
+            'created_by': createdBy,
+            'created_at': DateTime.now().toIso8601String(),
+          },
+          where: 'mahasiswa_id = ?',
+          whereArgs: [mahasiswaId],
+        );
+      } else {
+        return await db.insert('target_bimbingan', {
+          'mahasiswa_id': mahasiswaId,
+          'target_selesai': targetSelesai,
+          'created_by': createdBy,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      }
+    } catch (e) {
+      return 0;
+    }
   }
 }

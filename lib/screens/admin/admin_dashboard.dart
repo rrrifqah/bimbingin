@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../providers/bimbingan_provider.dart';
-import '../../models/booking.dart';
-import '../../models/student.dart';
-import '../../models/lecturer.dart';
+import 'package:intl/intl.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/target_provider.dart';
+import '../../database/database_helper.dart';
+import '../../models/user_model.dart';
+import '../../models/booking_model.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -12,13 +14,18 @@ class AdminDashboard extends StatefulWidget {
   State<AdminDashboard> createState() => _AdminDashboardState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProviderStateMixin {
+class _AdminDashboardState extends State<AdminDashboard>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  List<BookingModel> _allBooking = [];
+  bool _isLoading = false;
+  final DatabaseHelper _dbHelper = DatabaseHelper();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadBooking();
   }
 
   @override
@@ -27,12 +34,47 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
     super.dispose();
   }
 
+  Future<void> _loadBooking() async {
+    setState(() => _isLoading = true);
+    try {
+      _allBooking = await _dbHelper.getAllBooking();
+    } catch (e) {
+      _allBooking = [];
+    }
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _updateStatus(
+      int id, String status, String? catatan) async {
+    try {
+      await _dbHelper.updateStatusBooking(id, status, catatan);
+      await _loadBooking();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal memperbarui status booking.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<BimbinganProvider>();
+    final auth = context.watch<AuthProvider>();
+    final user = auth.currentUser;
     final primaryColor = Theme.of(context).primaryColor;
     const Color textDark = Color(0xFF2D3142);
     const Color textGrey = Color(0xFF9098B1);
+
+    final pendingList = _allBooking.where((b) => b.status == 'pending').toList();
+    final approvedList =
+        _allBooking.where((b) => b.status == 'approved').toList();
+    final historyList = _allBooking
+        .where((b) => b.status == 'rejected' || b.status == 'completed')
+        .toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FB),
@@ -45,9 +87,14 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF9098B1)),
+            onPressed: _loadBooking,
+          ),
+          IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
-            onPressed: () {
-              provider.logout();
+            onPressed: () async {
+              await context.read<AuthProvider>().logout();
+              if (!mounted) return;
               Navigator.popUntil(context, (route) => route.isFirst);
             },
           ),
@@ -58,59 +105,77 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
           unselectedLabelColor: textGrey,
           indicatorColor: primaryColor,
           labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-          tabs: const [
-            Tab(text: 'Antrian'),
-            Tab(text: 'Disetujui'),
-            Tab(text: 'Riwayat'),
+          tabs: [
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Antrian'),
+                  if (pendingList.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${pendingList.length}',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ]
+                ],
+              ),
+            ),
+            const Tab(text: 'Disetujui'),
+            const Tab(text: 'Riwayat'),
           ],
         ),
       ),
       body: SafeArea(
         child: Column(
           children: [
-            // Sub-header info
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               color: Colors.white,
-              child: const Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Halo, Staf Prodi! 👋',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textDark),
+                    'Halo, ${user?.nama ?? 'Staf'}! 👋',
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: textDark),
                   ),
-                  SizedBox(height: 2),
-                  Text(
+                  const SizedBox(height: 2),
+                  const Text(
                     'Persetujuan jadwal bimbingan masuk dari mahasiswa.',
                     style: TextStyle(fontSize: 12, color: textGrey),
                   ),
                 ],
               ),
             ),
-            
-            // Tab contents
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildBookingList(
-                    context, 
-                    provider.bookings.where((b) => b.status == 'Pending').toList(),
-                    showActions: true,
-                  ),
-                  _buildBookingList(
-                    context, 
-                    provider.bookings.where((b) => b.status == 'Approved').toList(),
-                    showActions: false,
-                  ),
-                  _buildBookingList(
-                    context, 
-                    provider.bookings.where((b) => b.status == 'Rejected' || b.status == 'Completed').toList(),
-                    showActions: false,
-                  ),
-                ],
-              ),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildBookingList(context, pendingList,
+                            showActions: true),
+                        _buildBookingList(context, approvedList,
+                            showActions: false),
+                        _buildBookingList(context, historyList,
+                            showActions: false),
+                      ],
+                    ),
             ),
           ],
         ),
@@ -118,8 +183,8 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
     );
   }
 
-  Widget _buildBookingList(BuildContext context, List<Booking> list, {required bool showActions}) {
-    final provider = context.read<BimbinganProvider>();
+  Widget _buildBookingList(BuildContext context, List<BookingModel> list,
+      {required bool showActions}) {
     final primaryColor = Theme.of(context).primaryColor;
     const Color textDark = Color(0xFF2D3142);
     const Color textGrey = Color(0xFF9098B1);
@@ -129,7 +194,8 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.assignment_turned_in_outlined, size: 64, color: Colors.grey.shade300),
+            Icon(Icons.assignment_turned_in_outlined,
+                size: 64, color: Colors.grey.shade300),
             const SizedBox(height: 12),
             const Text(
               'Tidak ada data booking di tab ini.',
@@ -146,45 +212,24 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
       itemBuilder: (context, index) {
         final booking = list[index];
 
-        // Find Student & Lecturer details
-        final student = provider.students.firstWhere(
-          (s) => s.id == booking.studentId,
-          orElse: () => Student(
-            id: booking.studentId,
-            name: 'Mahasiswa',
-            department: '',
-            thesisTitle: '',
-            advisorId: '',
-            daysWaiting: 0,
-            daysRemaining: 0,
-            progress: [],
-          ),
-        );
-
-        final lecturer = provider.lecturers.firstWhere(
-          (l) => l.id == booking.lecturerId,
-          orElse: () => Lecturer(
-            id: booking.lecturerId,
-            name: 'Dosen',
-            department: '',
-            avatarUrl: '',
-            availableSlots: [],
-          ),
-        );
-
         Color badgeColor;
-        switch (booking.status) {
-          case 'Approved':
+        String badgeLabel;
+        switch (booking.status.toLowerCase()) {
+          case 'approved':
             badgeColor = Colors.green;
+            badgeLabel = 'Disetujui';
             break;
-          case 'Rejected':
+          case 'rejected':
             badgeColor = Colors.red;
+            badgeLabel = 'Ditolak';
             break;
-          case 'Completed':
+          case 'completed':
             badgeColor = Colors.blue;
+            badgeLabel = 'Selesai';
             break;
           default:
             badgeColor = Colors.orange;
+            badgeLabel = 'Menunggu';
         }
 
         return Container(
@@ -194,13 +239,13 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: booking.status == 'Pending' 
-                  ? Colors.orange.shade100 
+              color: booking.status == 'pending'
+                  ? Colors.orange.shade100
                   : Colors.grey.shade200,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.02),
+                color: Colors.black.withValues(alpha: 0.02),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               )
@@ -209,18 +254,18 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Badge status & Code
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: badgeColor.withOpacity(0.1),
+                      color: badgeColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      booking.status,
+                      badgeLabel,
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -229,22 +274,31 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
                     ),
                   ),
                   Text(
-                    booking.id,
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textGrey),
+                    '#${booking.id}',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: textGrey),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
 
-              // Student & Lecturer details
+              // Mahasiswa
               Row(
                 children: [
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: primaryColor.withOpacity(0.1),
+                    backgroundColor: primaryColor.withValues(alpha: 0.1),
                     child: Text(
-                      student.name.isNotEmpty ? student.name[0] : 'M',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor, fontSize: 12),
+                      booking.namaMahasiswa != null &&
+                              booking.namaMahasiswa!.isNotEmpty
+                          ? booking.namaMahasiswa![0]
+                          : 'M',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: primaryColor,
+                          fontSize: 12),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -253,12 +307,16 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          student.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: textDark, fontSize: 14),
+                          booking.namaMahasiswa ?? 'Mahasiswa',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: textDark,
+                              fontSize: 14),
                         ),
                         Text(
-                          'NIM: ${student.id} | ${student.department}',
-                          style: const TextStyle(color: textGrey, fontSize: 11),
+                          booking.nim != null ? 'NIM: ${booking.nim}' : '',
+                          style:
+                              const TextStyle(color: textGrey, fontSize: 11),
                         ),
                       ],
                     ),
@@ -266,19 +324,21 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
                 ],
               ),
               const SizedBox(height: 8),
-
               const Divider(height: 1),
               const SizedBox(height: 8),
 
-              // Dosen & Waktu
               Row(
                 children: [
-                  const Icon(Icons.person_outline_rounded, size: 14, color: textGrey),
+                  const Icon(Icons.person_outline_rounded,
+                      size: 14, color: textGrey),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Dosen: ${lecturer.name}',
-                      style: const TextStyle(fontSize: 12, color: textDark, fontWeight: FontWeight.w500),
+                      'Dosen: ${booking.namaDosen ?? '-'}',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: textDark,
+                          fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -286,11 +346,15 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
               const SizedBox(height: 4),
               Row(
                 children: [
-                  const Icon(Icons.calendar_today_rounded, size: 14, color: textGrey),
+                  const Icon(Icons.calendar_today_rounded,
+                      size: 14, color: textGrey),
                   const SizedBox(width: 6),
                   Text(
-                    'Waktu: ${booking.date} @ ${booking.timeSlot}',
-                    style: const TextStyle(fontSize: 12, color: textDark, fontWeight: FontWeight.w500),
+                    'Tanggal: ${booking.tanggal ?? '-'} @ ${booking.jam ?? '-'}',
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: textDark,
+                        fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
@@ -298,37 +362,61 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.info_outline_rounded, size: 14, color: textGrey),
+                  const Icon(Icons.info_outline_rounded,
+                      size: 14, color: textGrey),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Keperluan: ${booking.purpose}',
-                      style: const TextStyle(fontSize: 12, color: textDark),
+                      'Keperluan: ${booking.keperluan}',
+                      style:
+                          const TextStyle(fontSize: 12, color: textDark),
                     ),
                   ),
                 ],
               ),
 
-              // Actions
+              if (booking.catatanStaf != null &&
+                  booking.catatanStaf!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.notes_rounded,
+                        size: 14, color: textGrey),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Catatan: ${booking.catatanStaf}',
+                        style: const TextStyle(
+                            fontSize: 12, color: textGrey),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
               if (showActions) ...[
                 const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () {
-                          provider.rejectBooking(booking.id);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Booking ditolak.'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
+                        onPressed: () async {
+                          await _updateStatus(booking.id!, 'rejected', null);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Booking ditolak.'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
                         },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red,
                           side: const BorderSide(color: Colors.red),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
                         child: const Text('Tolak'),
                       ),
@@ -336,21 +424,28 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () {
-                          provider.approveBooking(booking.id);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Booking disetujui.'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
+                        onPressed: () async {
+                          await _updateStatus(
+                              booking.id!, 'approved', null);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Booking disetujui.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                           elevation: 0,
                         ),
-                        child: const Text('Terima', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        child: const Text('Terima',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
