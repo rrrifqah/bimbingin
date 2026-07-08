@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../database/database_helper.dart';
+import '../database/supabase_service.dart';
 import '../models/progres_model.dart';
 
 class ProgresProvider with ChangeNotifier {
@@ -7,22 +7,20 @@ class ProgresProvider with ChangeNotifier {
   Map<int, List<ProgresModel>> _tahapGroupedByMahasiswa = {};
   bool _isLoading = false;
   int _menungguKonfirmasiCount = 0;
-  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final SupabaseService _service = SupabaseService();
 
   List<ProgresModel> get tahapMahasiswa => _tahapMahasiswa;
-  Map<int, List<ProgresModel>> get tahapGroupedByMahasiswa =>
-      _tahapGroupedByMahasiswa;
+  Map<int, List<ProgresModel>> get tahapGroupedByMahasiswa => _tahapGroupedByMahasiswa;
   bool get isLoading => _isLoading;
   int get menungguKonfirmasiCount => _menungguKonfirmasiCount;
 
   // ===== MAHASISWA =====
 
-  /// Ambil semua tahap progres untuk satu mahasiswa
   Future<void> fetchTahapMahasiswa(int mahasiswaId) async {
     _isLoading = true;
     notifyListeners();
     try {
-      _tahapMahasiswa = await _dbHelper.getAllTahapByMahasiswa(mahasiswaId);
+      _tahapMahasiswa = await _service.getAllTahapByMahasiswa(mahasiswaId);
     } catch (e) {
       _tahapMahasiswa = [];
     }
@@ -30,10 +28,9 @@ class ProgresProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Mahasiswa upload bukti revisi dan ajukan ke dosen
   Future<bool> ajukanKeDosen(int progresId, String catatanMahasiswa) async {
     try {
-      final result = await _dbHelper.ajukanKeDosen(progresId, catatanMahasiswa);
+      final result = await _service.ajukanKeDosen(progresId, catatanMahasiswa);
       if (result > 0) {
         final idx = _tahapMahasiswa.indexWhere((p) => p.id == progresId);
         if (idx != -1) {
@@ -53,15 +50,14 @@ class ProgresProvider with ChangeNotifier {
 
   // ===== DOSEN =====
 
-  /// Ambil semua tahap per mahasiswa (digroup) untuk dosen
   Future<void> fetchTahapGroupedByMahasiswaForDosen(int dosenId) async {
     _isLoading = true;
     notifyListeners();
     try {
       _tahapGroupedByMahasiswa =
-          await _dbHelper.getAllTahapGroupedByMahasiswaForDosen(dosenId);
+          await _service.getAllTahapGroupedByMahasiswaForDosen(dosenId);
       _menungguKonfirmasiCount =
-          await _dbHelper.countMenungguKonfirmasiByDosen(dosenId);
+          await _service.countMenungguKonfirmasiByDosen(dosenId);
     } catch (e) {
       _tahapGroupedByMahasiswa = {};
       _menungguKonfirmasiCount = 0;
@@ -70,14 +66,11 @@ class ProgresProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Dosen ACC atau kembalikan Revisi
   Future<bool> updateStatusByDosen(
       int progresId, String status, String? catatan, int dosenId) async {
     try {
-      final result =
-          await _dbHelper.updateStatusProgresById(progresId, status, catatan);
+      final result = await _service.updateStatusProgresById(progresId, status, catatan);
       if (result > 0) {
-        // Update in grouped map
         for (final key in _tahapGroupedByMahasiswa.keys) {
           final list = _tahapGroupedByMahasiswa[key]!;
           final idx = list.indexWhere((p) => p.id == progresId);
@@ -90,7 +83,7 @@ class ProgresProvider with ChangeNotifier {
           }
         }
         _menungguKonfirmasiCount =
-            await _dbHelper.countMenungguKonfirmasiByDosen(dosenId);
+            await _service.countMenungguKonfirmasiByDosen(dosenId);
         notifyListeners();
         return true;
       }
@@ -100,7 +93,7 @@ class ProgresProvider with ChangeNotifier {
     }
   }
 
-  // ===== LEGACY (backward compat) =====
+  // ===== LEGACY =====
   Future<void> fetchProgresMahasiswa(int mahasiswaId) async {
     await fetchTahapMahasiswa(mahasiswaId);
   }
@@ -113,11 +106,10 @@ class ProgresProvider with ChangeNotifier {
     try {
       int result;
       if (progres.id != null) {
-        result = await _dbHelper.updateProgres(progres);
+        result = await _service.updateProgres(progres);
       } else {
-        result = await _dbHelper.insertProgres(progres);
+        result = await _service.insertProgres(progres);
       }
-
       if (result > 0) {
         notifyListeners();
         return true;
@@ -127,4 +119,57 @@ class ProgresProvider with ChangeNotifier {
       return false;
     }
   }
+
+  // ===== FITUR 3: PROGRES DIKELOLA MAHASISWA =====
+
+  /// Menambah progres baru oleh mahasiswa
+  Future<bool> tambahProgres(ProgresModel progres) async {
+    try {
+      final result = await _service.insertProgresByMahasiswa(progres);
+      if (result > 0) {
+        // Refresh daftar progres mahasiswa setelah berhasil ditambah
+        await fetchTahapMahasiswa(progres.mahasiswaId);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Mengedit progres oleh mahasiswa (hanya data yang diperbolehkan)
+  Future<bool> editProgres(ProgresModel progres) async {
+    try {
+      final result = await _service.updateProgresByMahasiswa(progres);
+      if (result > 0) {
+        // Update data lokal di list
+        final idx = _tahapMahasiswa.indexWhere((p) => p.id == progres.id);
+        if (idx != -1) {
+          _tahapMahasiswa[idx] = progres;
+        }
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Menghapus progres oleh mahasiswa
+  Future<bool> hapusProgres(int progresId) async {
+    try {
+      final result = await _service.deleteProgresByMahasiswa(progresId);
+      if (result > 0) {
+        // Hapus dari daftar lokal
+        _tahapMahasiswa.removeWhere((p) => p.id == progresId);
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
 }
+

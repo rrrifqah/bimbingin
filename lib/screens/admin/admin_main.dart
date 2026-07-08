@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'admin_dashboard.dart';
 import 'kelola_jadwal_screen.dart';
 import 'update_progres_screen.dart';
+// Import halaman profil bersama untuk semua role
+import '../shared/profile_screen.dart';
 
 class AdminMain extends StatefulWidget {
   const AdminMain({super.key});
@@ -13,10 +15,12 @@ class AdminMain extends StatefulWidget {
 class AdminMainState extends State<AdminMain> {
   int _currentIndex = 0;
 
+  // Daftar halaman untuk bottom navigation admin/staf
   final List<Widget> _screens = [
     const AdminDashboard(),
     const KelolaJadwalScreen(),
     const UpdateProgresScreen(),
+    const ProfileScreen(), // [FITUR 4] Halaman profil admin
   ];
 
   void setIndex(int index) {
@@ -52,8 +56,10 @@ class AdminMainState extends State<AdminMain> {
           },
           selectedItemColor: primaryColor,
           unselectedItemColor: const Color(0xFF9098B1),
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 11),
+          selectedLabelStyle:
+              const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          unselectedLabelStyle:
+              const TextStyle(fontWeight: FontWeight.w500, fontSize: 11),
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           elevation: 0,
@@ -72,6 +78,12 @@ class AdminMainState extends State<AdminMain> {
               icon: Icon(Icons.edit_note_rounded),
               activeIcon: Icon(Icons.edit_note_rounded),
               label: 'Update Progres',
+            ),
+            // [FITUR 4] Tab Profil ditambahkan
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline_rounded),
+              activeIcon: Icon(Icons.person_rounded),
+              label: 'Profil',
             ),
           ],
         ),

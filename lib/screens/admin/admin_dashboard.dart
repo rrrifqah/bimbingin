@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/target_provider.dart';
-import '../../database/database_helper.dart';
+import '../../database/supabase_service.dart';
 import '../../models/user_model.dart';
 import '../../models/booking_model.dart';
 
@@ -19,7 +19,7 @@ class _AdminDashboardState extends State<AdminDashboard>
   late TabController _tabController;
   List<BookingModel> _allBooking = [];
   bool _isLoading = false;
-  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final SupabaseService _dbHelper = SupabaseService();
 
   @override
   void initState() {

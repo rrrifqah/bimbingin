@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/progres_provider.dart';
 import '../../models/progres_model.dart';
+import '../../providers/target_provider.dart';
+import '../../database/supabase_service.dart';
 
 class ProgresScreen extends StatefulWidget {
   const ProgresScreen({super.key});
@@ -14,6 +16,7 @@ class ProgresScreen extends StatefulWidget {
 
 class _ProgresScreenState extends State<ProgresScreen> {
   bool _dataLoaded = false;
+  int? _dosenId;
 
   @override
   void didChangeDependencies() {
@@ -28,139 +31,167 @@ class _ProgresScreenState extends State<ProgresScreen> {
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) return;
     await context.read<ProgresProvider>().fetchTahapMahasiswa(user.id!);
+    
+    // Fetch target for the visual indicator
+    await context.read<TargetProvider>().fetchTargetMahasiswa(user.id!);
+
+    // Dapatkan dosen pembimbing untuk membuat progres baru
+    final supabase = SupabaseService();
+    _dosenId = await supabase.getDosenPembimbingByMahasiswa(user.id!);
   }
 
-  /// Tampilkan dialog upload bukti revisi + ajukan ke dosen
-  void _showAjukanDialog(BuildContext context, ProgresModel progres) {
-    final TextEditingController catatanController = TextEditingController();
-    final primaryColor = Theme.of(context).primaryColor;
-    bool isSubmitting = false;
+  void _showFormProgres({ProgresModel? existingProgres}) {
+    final isEdit = existingProgres != null;
+    final user = context.read<AuthProvider>().currentUser;
+    if (user == null) return;
 
-    showDialog(
+    if (!isEdit && _dosenId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Anda belum memiliki dosen pembimbing.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final judulController = TextEditingController(
+        text: isEdit
+            ? existingProgres.judulSkripsi
+            : (context.read<ProgresProvider>().tahapMahasiswa.isNotEmpty
+                ? context.read<ProgresProvider>().tahapMahasiswa.first.judulSkripsi
+                : ''));
+    final catatanController =
+        TextEditingController(text: isEdit ? existingProgres.catatanMahasiswa : '');
+    
+    String selectedTahap = isEdit ? existingProgres.tahap : 'bab1';
+    
+    final List<String> tahapOptions = [
+      'bab1', 'bab2', 'bab3', 'seminar_proposal', 'bab4_5', 'sidang', 'selesai'
+    ];
+
+    String getTahapLabel(String t) {
+      switch (t) {
+        case 'bab1': return 'Bab 1: Pendahuluan';
+        case 'bab2': return 'Bab 2: Tinjauan Pustaka';
+        case 'bab3': return 'Bab 3: Metodologi';
+        case 'seminar_proposal': return 'Seminar Proposal';
+        case 'bab4_5': return 'Bab 4 & 5: Implementasi';
+        case 'sidang': return 'Sidang Skripsi';
+        case 'selesai': return 'Selesai';
+        default: return t;
+      }
+    }
+
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) {
         return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Upload Bukti Revisi',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: primaryColor,
-                        fontSize: 18),
-                  ),
-                  Text(
-                    progres.tahapLabel,
-                    style: const TextStyle(
-                        fontSize: 13, color: Color(0xFF9098B1)),
-                  ),
-                ],
+          builder: (ctx, setStateSheet) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+                left: 20, right: 20, top: 20,
               ),
-              content: Column(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Tuliskan keterangan bahwa revisi sudah dilakukan:',
-                    style:
-                        TextStyle(fontSize: 13, color: Color(0xFF2D3142)),
+                  Text(
+                    isEdit ? 'Edit Progres' : 'Tambah Progres',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextField(
-                    controller: catatanController,
-                    maxLines: 4,
+                    controller: judulController,
                     decoration: InputDecoration(
-                      hintText: 'Contoh: Sudah perbaiki latar belakang sesuai catatan dosen...',
-                      hintStyle: const TextStyle(
-                          color: Color(0xFF9098B1), fontSize: 12),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            BorderSide(color: Colors.grey.shade200),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            BorderSide(color: primaryColor, width: 1.5),
-                      ),
+                      labelText: 'Judul Skripsi',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: selectedTahap,
+                    decoration: InputDecoration(
+                      labelText: 'Tahap',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    items: tahapOptions.map((t) {
+                      return DropdownMenuItem(value: t, child: Text(getTahapLabel(t)));
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) setStateSheet(() => selectedTahap = val);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: catatanController,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: 'Catatan / Laporan Progres',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).primaryColor,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () async {
+                        if (judulController.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Judul tidak boleh kosong!')),
+                          );
+                          return;
+                        }
+
+                        final provider = context.read<ProgresProvider>();
+                        bool success = false;
+                        
+                        if (isEdit) {
+                          final updated = existingProgres.copyWith(
+                            judulSkripsi: judulController.text.trim(),
+                            tahap: selectedTahap,
+                            catatanMahasiswa: catatanController.text.trim(),
+                          );
+                          success = await provider.editProgres(updated);
+                        } else {
+                          final newProgres = ProgresModel(
+                            mahasiswaId: user.id!,
+                            dosenId: _dosenId!,
+                            judulSkripsi: judulController.text.trim(),
+                            tahap: selectedTahap,
+                            status: 'menunggu_konfirmasi',
+                            catatanMahasiswa: catatanController.text.trim(),
+                            updatedAt: DateTime.now().toIso8601String(),
+                          );
+                          success = await provider.tambahProgres(newProgres);
+                        }
+
+                        if (!ctx.mounted) return;
+                        Navigator.pop(ctx);
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(success ? 'Berhasil menyimpan progres' : 'Gagal menyimpan progres'),
+                            backgroundColor: success ? Colors.green : Colors.red,
+                          ),
+                        );
+                      },
+                      child: const Text('Simpan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                 ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Batal',
-                      style: TextStyle(color: Color(0xFF9098B1))),
-                ),
-                ElevatedButton(
-                  onPressed: isSubmitting
-                      ? null
-                      : () async {
-                          if (catatanController.text.trim().isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content:
-                                    Text('Harap isi keterangan revisi!'),
-                                backgroundColor: Colors.orange,
-                              ),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isSubmitting = true);
-
-                          final success = await context
-                              .read<ProgresProvider>()
-                              .ajukanKeDosen(
-                                  progres.id!, catatanController.text.trim());
-
-                          if (!ctx.mounted) return;
-                          Navigator.pop(ctx);
-
-                          if (success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                    '${progres.tahapLabel} berhasil diajukan ke dosen!'),
-                                backgroundColor:
-                                    const Color(0xFF22C55E),
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content:
-                                    Text('Gagal mengajukan. Coba lagi.'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: isSubmitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2))
-                      : const Text('Ajukan ke Dosen',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
-                ),
-              ],
             );
           },
         );
@@ -168,45 +199,102 @@ class _ProgresScreenState extends State<ProgresScreen> {
     );
   }
 
+  void _confirmDelete(int progresId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Progres'),
+        content: const Text('Yakin ingin menghapus progres ini?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              final success = await context.read<ProgresProvider>().hapusProgres(progresId);
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(success ? 'Progres dihapus' : 'Gagal menghapus'),
+                  backgroundColor: success ? Colors.green : Colors.red,
+                ),
+              );
+            },
+            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
     final progresProvider = context.watch<ProgresProvider>();
-    final user = auth.currentUser;
+    final targetProvider = context.watch<TargetProvider>();
+    final user = context.watch<AuthProvider>().currentUser;
     final primaryColor = Theme.of(context).primaryColor;
-    const Color textDark = Color(0xFF2D3142);
-    const Color textGrey = Color(0xFF9098B1);
 
-    if (user == null) {
-      return const Scaffold(
-          body: Center(child: CircularProgressIndicator()));
-    }
+    if (user == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final tahapList = progresProvider.tahapMahasiswa;
     final accCount = tahapList.where((p) => p.status == 'acc').length;
     final total = tahapList.length;
     final pct = total > 0 ? accCount / total : 0.0;
-
-    final judulSkripsi =
-        tahapList.isNotEmpty ? tahapList.first.judulSkripsi : '-';
+    
+    // Fitur 2: Visual indikator target waktu
+    final targetData = targetProvider.targetMahasiswa;
+    final targetSelesai = targetData?['target_selesai'] as String?;
+    
+    String statusTarget = 'Belum Ada Target';
+    Color warnaTarget = Colors.grey;
+    if (targetSelesai != null) {
+        final sisaHari = TargetProvider.hitungSisaHari(targetSelesai);
+        final isSelesai = tahapList.any((p) => p.tahap == 'selesai' && p.status == 'acc');
+        
+        if (isSelesai) {
+             final selesaiUpdate = tahapList.firstWhere((p) => p.tahap == 'selesai' && p.status == 'acc').updatedAt;
+             final compDate = DateTime.parse(selesaiUpdate);
+             final targetDate = DateTime.parse(targetSelesai);
+             final c = DateTime(compDate.year, compDate.month, compDate.day);
+             final t = DateTime(targetDate.year, targetDate.month, targetDate.day);
+             if (c.isBefore(t) || c.isAtSameMomentAs(t)) {
+                 statusTarget = 'Selesai Tepat Waktu';
+                 warnaTarget = Colors.green;
+             } else {
+                 statusTarget = 'Target Terlewati';
+                 warnaTarget = Colors.red;
+             }
+        } else {
+            if (sisaHari < 0) {
+                statusTarget = 'Target Terlewati';
+                warnaTarget = Colors.red;
+            } else {
+                statusTarget = 'Dalam Target (Sisa $sisaHari Hari)';
+                warnaTarget = Colors.blue;
+            }
+        }
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FB),
       appBar: AppBar(
-        title: const Text(
-          'Progres Skripsi',
-          style: TextStyle(fontWeight: FontWeight.bold, color: textDark),
-        ),
+        title: const Text('Progres Skripsi', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
         backgroundColor: Colors.white,
-        elevation: 0,
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF9098B1)),
+            icon: const Icon(Icons.refresh, color: Colors.grey),
             onPressed: _loadData,
-            tooltip: 'Refresh',
-          ),
+          )
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: primaryColor,
+        onPressed: () => _showFormProgres(),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
       body: progresProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -214,131 +302,83 @@ class _ProgresScreenState extends State<ProgresScreen> {
               onRefresh: _loadData,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(20.0),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Progress Summary Card
+                    // Target Status Card (FITUR 2)
+                    if (targetSelesai != null)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                            color: warnaTarget.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: warnaTarget.withOpacity(0.3))
+                        ),
+                        child: Row(
+                            children: [
+                                Icon(Icons.flag, color: warnaTarget),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                    child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                            Text('Target Waktu: ${DateFormat('dd MMM yyyy').format(DateTime.parse(targetSelesai))}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                            Text(statusTarget, style: TextStyle(color: warnaTarget, fontWeight: FontWeight.bold, fontSize: 13)),
+                                        ]
+                                    )
+                                )
+                            ]
+                        )
+                      ),
+                      
+                    // Summary Card
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
+                          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4)),
                         ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Ringkasan Capaian',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: textDark),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '"$judulSkripsi"',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: textGrey,
-                                fontStyle: FontStyle.italic),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          const Text('Ringkasan Capaian', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 16),
                           Row(
                             children: [
                               Container(
-                                width: 55,
-                                height: 55,
-                                decoration: BoxDecoration(
-                                  color: primaryColor.withValues(alpha: 0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(Icons.stars_rounded,
-                                    color: primaryColor, size: 30),
+                                width: 50, height: 50,
+                                decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
+                                child: Icon(Icons.star, color: primaryColor),
                               ),
                               const SizedBox(width: 16),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      '$accCount dari $total Tahap ACC',
-                                      style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: textDark),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    ClipRRect(
-                                      borderRadius:
-                                          BorderRadius.circular(4),
-                                      child: LinearProgressIndicator(
-                                        value: pct,
-                                        minHeight: 6,
-                                        backgroundColor:
-                                            Colors.grey.shade100,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                                primaryColor),
-                                      ),
-                                    ),
+                                    Text('$accCount dari $total Tahap Selesai', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 8),
+                                    LinearProgressIndicator(value: pct, backgroundColor: Colors.grey.shade200, color: primaryColor),
                                   ],
                                 ),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 16),
-                          // Legend
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildLegend(const Color(0xFF22C55E), 'ACC'),
-                              _buildLegend(
-                                  const Color(0xFFF59E0B), 'Menunggu'),
-                              _buildLegend(
-                                  const Color(0xFFEF4444), 'Revisi'),
-                              _buildLegend(Colors.grey.shade400, 'Belum'),
-                            ],
-                          ),
+                          )
                         ],
                       ),
                     ),
                     const SizedBox(height: 24),
 
-                    // Timeline Header
-                    const Text(
-                      'Timeline Tahapan Skripsi',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: textDark),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Tahap dengan status "Revisi" dapat diajukan kembali ke dosen.',
-                      style: TextStyle(fontSize: 11, color: textGrey),
-                    ),
+                    // Timeline
+                    const Text('Timeline Tahapan Skripsi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
-
-                    // Vertical Timeline
                     if (tahapList.isEmpty)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(32),
-                          child: Text('Belum ada data progres.',
-                              style: TextStyle(color: textGrey)),
-                        ),
-                      )
+                      const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('Belum ada progres.')))
                     else
                       ListView.builder(
                         shrinkWrap: true,
@@ -346,280 +386,75 @@ class _ProgresScreenState extends State<ProgresScreen> {
                         itemCount: tahapList.length,
                         itemBuilder: (context, index) {
                           final stage = tahapList[index];
-                          final isLast = index == tahapList.length - 1;
-                          return _buildTimelineCard(
-                              context, stage, isLast, primaryColor, accCount);
+                          Color statusColor;
+                          String statusLabel;
+                          
+                          switch (stage.status) {
+                            case 'acc': statusColor = Colors.green; statusLabel = 'ACC'; break;
+                            case 'revisi': statusColor = Colors.red; statusLabel = 'Revisi'; break;
+                            case 'menunggu_konfirmasi': statusColor = Colors.orange; statusLabel = 'Menunggu'; break;
+                            default: statusColor = Colors.grey; statusLabel = 'Belum';
+                          }
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: statusColor.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                              Text(stage.tahapLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                              Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                                  child: Text(statusLabel, style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                                              )
+                                          ]
+                                      ),
+                                      if (stage.catatanMahasiswa != null && stage.catatanMahasiswa!.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 8),
+                                          child: Text('Catatan saya: ${stage.catatanMahasiswa}', style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                                        ),
+                                      if (stage.catatan != null && stage.catatan!.isNotEmpty)
+                                        Padding(
+                                            padding: const EdgeInsets.only(top: 8),
+                                            child: Text('Catatan Dosen: ${stage.catatan}', style: const TextStyle(fontSize: 12, color: Colors.blueGrey))
+                                        )
+                                    ],
+                                  ),
+                                ),
+                                Row(
+                                    children: [
+                                        IconButton(
+                                            icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
+                                            onPressed: () => _showFormProgres(existingProgres: stage),
+                                        ),
+                                        IconButton(
+                                            icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                                            onPressed: () => _confirmDelete(stage.id!),
+                                        ),
+                                    ]
+                                )
+                              ],
+                            ),
+                          );
                         },
                       ),
-                    const SizedBox(height: 20),
                   ],
                 ),
               ),
             ),
     );
-  }
-
-  Widget _buildTimelineCard(BuildContext context, ProgresModel stage,
-      bool isLast, Color primaryColor, int accCount) {
-    Color statusColor;
-    IconData statusIcon;
-    String statusLabel;
-
-    switch (stage.status) {
-      case 'acc':
-        statusColor = const Color(0xFF22C55E);
-        statusIcon = Icons.check_circle_rounded;
-        statusLabel = 'Disetujui (ACC)';
-        break;
-      case 'revisi':
-        statusColor = const Color(0xFFEF4444);
-        statusIcon = Icons.cancel_rounded;
-        statusLabel = 'Revisi';
-        break;
-      case 'menunggu_konfirmasi':
-        statusColor = const Color(0xFFF59E0B);
-        statusIcon = Icons.pending_rounded;
-        statusLabel = 'Menunggu Konfirmasi';
-        break;
-      default:
-        statusColor = Colors.grey.shade400;
-        statusIcon = Icons.circle_outlined;
-        statusLabel = 'Belum Mulai';
-    }
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Line and Dot indicator
-          Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                child: Icon(statusIcon, color: statusColor, size: 24),
-              ),
-              if (!isLast)
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    color: stage.status == 'acc'
-                        ? const Color(0xFF22C55E)
-                        : Colors.grey.shade300,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(width: 16),
-
-          // Card Content
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 20),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: statusColor.withValues(alpha: 0.25),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          stage.tahapLabel,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2D3142),
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          statusLabel,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: statusColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // Updated at
-                  if (stage.status != 'belum') ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Diperbarui: ${_formatDate(stage.updatedAt)}',
-                      style:
-                          const TextStyle(fontSize: 10, color: Color(0xFF9098B1)),
-                    ),
-                  ],
-
-                  // Catatan dosen
-                  if (stage.catatan != null &&
-                      stage.catatan!.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.grey.shade100),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                stage.status == 'acc'
-                                    ? Icons.rate_review_rounded
-                                    : Icons.warning_amber_rounded,
-                                size: 14,
-                                color: statusColor,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                stage.status == 'acc'
-                                    ? 'Catatan Dosen'
-                                    : 'Revisi Dibutuhkan',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: statusColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            stage.catatan!,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF2D3142),
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  // Catatan mahasiswa (jika sudah diajukan)
-                  if (stage.status == 'menunggu_konfirmasi' &&
-                      stage.catatanMahasiswa != null &&
-                      stage.catatanMahasiswa!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                            color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Bukti revisi Anda:',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFF59E0B),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            stage.catatanMahasiswa!,
-                            style: const TextStyle(
-                                fontSize: 12, color: Color(0xFF2D3142)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  // --- FITUR 4: Tombol Upload Bukti Revisi ---
-                  if (stage.status == 'revisi') ...[
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () =>
-                            _showAjukanDialog(context, stage),
-                        icon: const Icon(Icons.upload_rounded,
-                            size: 16, color: Colors.white),
-                        label: const Text(
-                          'Upload Bukti & Ajukan ke Dosen',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFEF4444),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegend(Color color, String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Text(label,
-            style:
-                const TextStyle(fontSize: 9, color: Color(0xFF9098B1))),
-      ],
-    );
-  }
-
-  String _formatDate(String isoDate) {
-    try {
-      return DateFormat('dd MMM yyyy, HH:mm').format(DateTime.parse(isoDate));
-    } catch (_) {
-      return isoDate;
-    }
   }
 }

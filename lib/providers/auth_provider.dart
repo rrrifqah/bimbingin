@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../database/database_helper.dart';
+import '../database/supabase_service.dart';
 import '../models/user_model.dart';
 
 class AuthProvider with ChangeNotifier {
   UserModel? _currentUser;
   bool _isLoggedIn = false;
-  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final SupabaseService _service = SupabaseService();
 
   UserModel? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
@@ -19,7 +19,7 @@ class AuthProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     int? userId = prefs.getInt('user_id');
     if (userId != null) {
-      _currentUser = await _dbHelper.getUserById(userId);
+      _currentUser = await _service.getUserById(userId);
       if (_currentUser != null) {
         _isLoggedIn = true;
       }
@@ -28,7 +28,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<bool> login(String nimNip, String password) async {
-    final user = await _dbHelper.login(nimNip, password);
+    final user = await _service.login(nimNip, password);
     if (user != null) {
       _currentUser = user;
       _isLoggedIn = true;
@@ -38,6 +38,38 @@ class AuthProvider with ChangeNotifier {
       return true;
     }
     return false;
+  }
+
+  Future<bool> register(UserModel user) async {
+    try {
+      final id = await _service.insertUser(user);
+      if (id > 0) {
+        final registeredUser = await _service.getUserById(id);
+        if (registeredUser != null) {
+          _currentUser = registeredUser;
+          _isLoggedIn = true;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt('user_id', registeredUser.id!);
+          notifyListeners();
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      throw Exception(e.toString());
+    }
+  }
+
+  /// Memperbarui data profil pengguna (nama, jurusan) ke Supabase
+  Future<bool> updateProfile(UserModel updatedUser) async {
+    try {
+      await _service.updateUser(updatedUser);
+      _currentUser = updatedUser;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   Future<void> logout() async {

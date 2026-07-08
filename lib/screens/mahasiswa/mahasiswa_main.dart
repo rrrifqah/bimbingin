@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../providers/bimbingan_provider.dart';
 import 'mahasiswa_dashboard.dart';
 import 'booking_screen.dart';
 import 'progres_screen.dart';
+// Import halaman profil bersama untuk semua role
+import '../shared/profile_screen.dart';
 
 class MahasiswaMain extends StatefulWidget {
   const MahasiswaMain({super.key});
@@ -15,10 +15,12 @@ class MahasiswaMain extends StatefulWidget {
 class MahasiswaMainState extends State<MahasiswaMain> {
   int _currentIndex = 0;
 
+  // Daftar halaman untuk bottom navigation mahasiswa
   final List<Widget> _screens = [
     const MahasiswaDashboard(),
     const BookingScreen(),
     const ProgresScreen(),
+    const ProfileScreen(), // [FITUR 4] Halaman profil mahasiswa
   ];
 
   void setIndex(int index) {
@@ -54,8 +56,10 @@ class MahasiswaMainState extends State<MahasiswaMain> {
           },
           selectedItemColor: primaryColor,
           unselectedItemColor: const Color(0xFF9098B1),
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 11),
+          selectedLabelStyle:
+              const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          unselectedLabelStyle:
+              const TextStyle(fontWeight: FontWeight.w500, fontSize: 11),
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           elevation: 0,
@@ -74,6 +78,12 @@ class MahasiswaMainState extends State<MahasiswaMain> {
               icon: Icon(Icons.analytics_outlined),
               activeIcon: Icon(Icons.analytics),
               label: 'Progres',
+            ),
+            // [FITUR 4] Tab Profil ditambahkan
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline_rounded),
+              activeIcon: Icon(Icons.person_rounded),
+              label: 'Profil',
             ),
           ],
         ),

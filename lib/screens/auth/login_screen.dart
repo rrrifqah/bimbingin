@@ -4,6 +4,7 @@ import '../../providers/auth_provider.dart';
 import '../mahasiswa/mahasiswa_main.dart';
 import '../admin/admin_main.dart';
 import '../dosen/dosen_main.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -374,45 +375,34 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Hint Credentials Card
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.info_outline, size: 16, color: primaryColor),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Akun Demo Bimbingin:',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: primaryColor,
-                                ),
-                              ),
-                            ],
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Belum punya akun? ',
+                          style: TextStyle(
+                            color: textGrey,
+                            fontWeight: FontWeight.w500,
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            '• Mahasiswa: 60200121001 / mahasiswa123\n'
-                            '• Dosen: 198001012005011001 / dosen123\n'
-                            '• Staf/Admin: staf001 / staf123',
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const RegisterScreen(),
+                              ),
+                            );
+                          },
+                          child: Text(
+                            'Daftar Sekarang',
                             style: TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF2D3142),
-                              height: 1.5,
+                              color: primaryColor,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

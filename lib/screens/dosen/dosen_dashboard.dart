@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/progres_provider.dart';
+import '../../providers/booking_provider.dart';
+import '../../providers/jadwal_provider.dart';
 import 'dosen_main.dart';
 
 class DosenDashboard extends StatefulWidget {
@@ -26,13 +28,20 @@ class _DosenDashboardState extends State<DosenDashboard> {
   Future<void> _loadData() async {
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) return;
-    await context.read<ProgresProvider>().fetchTahapGroupedByMahasiswaForDosen(user.id!);
+    await Future.wait([
+      context.read<ProgresProvider>().fetchTahapGroupedByMahasiswaForDosen(user.id!),
+      context.read<BookingProvider>().fetchBookingByDosen(user.id!),
+      context.read<JadwalProvider>().fetchJadwalDosen(user.id!),
+    ]);
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final progresProvider = context.watch<ProgresProvider>();
+    final bookingProvider = context.watch<BookingProvider>();
+    final jadwalProvider = context.watch<JadwalProvider>();
+    
     final user = auth.currentUser;
     final primaryColor = Theme.of(context).primaryColor;
     const Color textDark = Color(0xFF2D3142);
@@ -47,6 +56,13 @@ class _DosenDashboardState extends State<DosenDashboard> {
     final grouped = progresProvider.tahapGroupedByMahasiswa;
     final totalMahasiswa = grouped.keys.length;
     final menungguCount = progresProvider.menungguKonfirmasiCount;
+    
+    // Hitung permintaan booking pending
+    final listBooking = bookingProvider.bookingList;
+    final pendingBookingCount = listBooking.where((b) => b.status == 'pending').length;
+    
+    // Limit to recent 3 bookings
+    final recentBookings = listBooking.where((b) => b.status == 'pending').take(3).toList();
 
     // Hitung total progres keseluruhan
     int totalAcc = 0, totalTahap = 0;
@@ -205,6 +221,131 @@ class _DosenDashboardState extends State<DosenDashboard> {
                   ),
                   const SizedBox(height: 24),
                 ],
+
+                // Permintaan Booking Terbaru
+                if (recentBookings.isNotEmpty) ...[
+                  const Text(
+                    'Permintaan Booking Terbaru',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...recentBookings.map((booking) => Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.blue.shade100, width: 1.2),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.event_available, color: Colors.blue, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    booking.namaMahasiswa ?? 'Mahasiswa ID ${booking.mahasiswaId}',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text('Keperluan: ${booking.keperluan}', style: const TextStyle(fontSize: 13)),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () async {
+                                      await bookingProvider.updateStatusBooking(booking.id!, 'rejected', 'Ditolak dosen');
+                                      _loadData();
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                    ),
+                                    child: const Text('Tolak'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: () async {
+                                      await bookingProvider.updateStatusBooking(booking.id!, 'approved', 'Disetujui dosen');
+                                      _loadData();
+                                    },
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                    child: const Text('Setujui', style: TextStyle(color: Colors.white)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      )),
+                  const SizedBox(height: 24),
+                ],
+
+                // Jadwal Bimbingan
+                const Text(
+                  'Jadwal Bimbingan Saya',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: textDark,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                jadwalProvider.isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : jadwalProvider.jadwalList.isEmpty
+                        ? Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.grey.shade200),
+                            ),
+                            child: const Text(
+                              'Belum ada jadwal yang dibuat.',
+                              style: TextStyle(color: textGrey, fontSize: 13),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: jadwalProvider.jadwalList.take(3).length, // Show up to 3
+                            itemBuilder: (context, index) {
+                              final jadwal = jadwalProvider.jadwalList[index];
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: ListTile(
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: primaryColor.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(Icons.calendar_today, color: primaryColor, size: 20),
+                                  ),
+                                  title: Text('${jadwal.hari}, ${jadwal.tanggal}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                  subtitle: Text('${jadwal.jamMulai} - ${jadwal.jamSelesai}\nStatus: ${jadwal.status.toUpperCase()}'),
+                                  isThreeLine: true,
+                                ),
+                              );
+                            },
+                          ),
+                const SizedBox(height: 24),
 
                 // Progres Overview
                 Row(

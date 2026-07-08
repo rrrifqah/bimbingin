@@ -6,6 +6,8 @@ import '../../providers/progres_provider.dart';
 import '../../providers/target_provider.dart';
 import '../../models/progres_model.dart';
 import 'mahasiswa_main.dart';
+import '../../database/supabase_service.dart';
+import '../../models/user_model.dart';
 
 class MahasiswaDashboard extends StatefulWidget {
   const MahasiswaDashboard({super.key});
@@ -16,6 +18,7 @@ class MahasiswaDashboard extends StatefulWidget {
 
 class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
   bool _dataLoaded = false;
+  UserModel? _dosenPembimbing;
 
   @override
   void didChangeDependencies() {
@@ -35,6 +38,66 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
       context.read<ProgresProvider>().fetchTahapMahasiswa(user.id!),
       context.read<TargetProvider>().fetchTargetMahasiswa(user.id!),
     ]);
+
+    final supabase = SupabaseService();
+    final dosenId = await supabase.getDosenPembimbingByMahasiswa(user.id!);
+    if (dosenId != null) {
+      final dosen = await supabase.getUserById(dosenId);
+      if (mounted) {
+        setState(() {
+          _dosenPembimbing = dosen;
+        });
+      }
+    }
+  }
+
+  Future<void> _selectTargetDate(BuildContext context) async {
+    final user = context.read<AuthProvider>().currentUser;
+    if (user == null) return;
+
+    final targetProvider = context.read<TargetProvider>();
+    DateTime initialDate = DateTime.now().add(const Duration(days: 60));
+    final existingTarget = targetProvider.targetMahasiswa?['target_selesai'] as String?;
+    if (existingTarget != null) {
+      try {
+        initialDate = DateTime.parse(existingTarget);
+      } catch (_) {}
+    }
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate.isAfter(DateTime.now()) ? initialDate : DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+      helpText: 'Pilih Target Selesai Skripsi',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Theme.of(context).primaryColor,
+              onPrimary: Colors.white,
+              onSurface: const Color(0xFF2D3142),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      final targetStr =
+          '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+      
+      final success = await targetProvider.upsertTarget(user.id!, targetStr, user.id!);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? 'Target selesai berhasil diperbarui!' : 'Gagal memperbarui target.'),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _showProgresBottomSheet(BuildContext context) {
@@ -297,8 +360,47 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
     final targetSelesai = target?['target_selesai'] as String?;
     final sisaHari =
         targetSelesai != null ? TargetProvider.hitungSisaHari(targetSelesai) : null;
-    final warnaTarget =
-        sisaHari != null ? TargetProvider.warnaIndikator(sisaHari) : Colors.grey;
+
+    String targetStatus = 'Dalam Target';
+    Color warnaTarget = const Color(0xFF3B4FE4); // Blue
+    IconData iconTarget = Icons.alarm_on_rounded;
+    
+    if (targetSelesai != null) {
+      final isCompleted = tahapList.isNotEmpty &&
+          tahapList.any((p) => p.tahap == 'selesai' && p.status == 'acc');
+      if (isCompleted) {
+        final selesaiStage = tahapList.firstWhere((p) => p.tahap == 'selesai' && p.status == 'acc');
+        try {
+          final completionDate = DateTime.parse(selesaiStage.updatedAt);
+          final targetDate = DateTime.parse(targetSelesai);
+          final compDay = DateTime(completionDate.year, completionDate.month, completionDate.day);
+          final targetDay = DateTime(targetDate.year, targetDate.month, targetDate.day);
+          if (compDay.isBefore(targetDay) || compDay.isAtSameMomentAs(targetDay)) {
+            targetStatus = 'Selesai Tepat Waktu';
+            warnaTarget = const Color(0xFF22C55E); // Green
+            iconTarget = Icons.check_circle_rounded;
+          } else {
+            targetStatus = 'Target Terlewati';
+            warnaTarget = const Color(0xFFEF4444); // Red
+            iconTarget = Icons.error_outline_rounded;
+          }
+        } catch (_) {
+          targetStatus = 'Selesai Tepat Waktu';
+          warnaTarget = const Color(0xFF22C55E);
+          iconTarget = Icons.check_circle_rounded;
+        }
+      } else {
+        if (sisaHari != null && sisaHari < 0) {
+          targetStatus = 'Target Terlewati';
+          warnaTarget = const Color(0xFFEF4444); // Red
+          iconTarget = Icons.error_outline_rounded;
+        } else {
+          targetStatus = 'Dalam Target';
+          warnaTarget = const Color(0xFF3B4FE4); // Blue
+          iconTarget = Icons.alarm_on_rounded;
+        }
+      }
+    }
 
     // Judul skripsi dari tahap pertama
     final judulSkripsi = tahapList.isNotEmpty ? tahapList.first.judulSkripsi : '';
@@ -432,6 +534,70 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                   const SizedBox(height: 24),
                 ],
 
+                // Dosen Pembimbing Card
+                const Text(
+                  'Dosen Pembimbing',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: textDark),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4)),
+                    ],
+                  ),
+                  child: _dosenPembimbing == null
+                      ? Row(
+                          children: [
+                            const Icon(Icons.person_off_outlined, color: textGrey),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Belum memiliki Dosen Pembimbing',
+                                style: TextStyle(color: textGrey, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor: primaryColor.withOpacity(0.1),
+                              child: Text(
+                                _dosenPembimbing!.nama.isNotEmpty ? _dosenPembimbing!.nama[0].toUpperCase() : 'D',
+                                style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 20),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _dosenPembimbing!.nama,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, color: textDark, fontSize: 15),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'NIP: ${_dosenPembimbing!.nimNip}',
+                                    style: const TextStyle(color: textGrey, fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: 24),
+
                 // Target Waktu Selesai Card — FITUR 2
                 const Text(
                   'Target Waktu Selesai',
@@ -454,19 +620,35 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border:
-                                  Border.all(color: Colors.grey.shade200),
+                              border: Border.all(color: Colors.grey.shade200),
                             ),
-                            child: const Row(
+                            child: Row(
                               children: [
-                                Icon(Icons.hourglass_empty_rounded,
+                                const Icon(Icons.hourglass_empty_rounded,
                                     color: Color(0xFF9098B1)),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Belum ada target yang ditetapkan',
-                                  style: TextStyle(
-                                      color: Color(0xFF9098B1),
-                                      fontSize: 13),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Text(
+                                    'Belum ada target yang ditetapkan',
+                                    style: TextStyle(
+                                        color: Color(0xFF9098B1),
+                                        fontSize: 13),
+                                  ),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => _selectTargetDate(context),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: primaryColor,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    elevation: 0,
+                                  ),
+                                  child: const Text(
+                                    'Atur Target',
+                                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
                                 ),
                               ],
                             ),
@@ -475,10 +657,12 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: targetStatus == 'Target Terlewati' ? const Color(0xFFFEF2F2) : Colors.white,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                  color: warnaTarget.withValues(alpha: 0.3)),
+                                color: targetStatus == 'Target Terlewati' ? const Color(0xFFFCA5A5) : warnaTarget.withValues(alpha: 0.3),
+                                width: targetStatus == 'Target Terlewati' ? 1.5 : 1.0,
+                              ),
                               boxShadow: [
                                 BoxShadow(
                                   color: warnaTarget.withValues(alpha: 0.08),
@@ -496,11 +680,7 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
-                                    sisaHari! > 30
-                                        ? Icons.check_circle_outline_rounded
-                                        : sisaHari >= 10
-                                            ? Icons.warning_amber_rounded
-                                            : Icons.error_outline_rounded,
+                                    iconTarget,
                                     color: warnaTarget,
                                     size: 24,
                                   ),
@@ -513,17 +693,19 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                                     children: [
                                       Text(
                                         'Target: ${DateFormat('dd MMMM yyyy', 'id_ID').format(DateTime.parse(targetSelesai))}',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.bold,
-                                          color: textDark,
+                                          color: targetStatus == 'Target Terlewati' ? const Color(0xFF991B1B) : textDark,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        sisaHari < 0
-                                            ? 'Target sudah lewat ${sisaHari.abs()} hari!'
-                                            : 'Sisa $sisaHari hari lagi',
+                                        targetStatus == 'Target Terlewati'
+                                            ? 'Target sudah terlewati!'
+                                            : targetStatus == 'Selesai Tepat Waktu'
+                                                ? 'Selesai Tepat Waktu!'
+                                                : 'Sisa $sisaHari hari lagi',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
@@ -533,27 +715,34 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                                     ],
                                   ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: warnaTarget.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    sisaHari < 0
-                                        ? 'LEWAT'
-                                        : sisaHari < 10
-                                            ? 'SEGERA'
-                                            : sisaHari < 30
-                                                ? 'DEKAT'
-                                                : 'ON TRACK',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: warnaTarget,
+                                Column(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: warnaTarget.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        targetStatus.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: warnaTarget,
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                    const SizedBox(height: 4),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_calendar_rounded, size: 18),
+                                      color: const Color(0xFF9098B1),
+                                      onPressed: () => _selectTargetDate(context),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      tooltip: 'Ubah Target',
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
