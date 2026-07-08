@@ -4,6 +4,7 @@ import '../models/jadwal_model.dart';
 import '../models/booking_model.dart';
 import '../models/progres_model.dart';
 import '../models/validasi_model.dart';
+import '../models/konsultasi_model.dart';
 
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
@@ -516,5 +517,76 @@ class SupabaseService {
       return 0;
     }
   }
+
+  // === FITUR PENCARIAN DOSEN ===
+  Future<List<UserModel>> searchDosen(String keyword) async {
+    try {
+      final response = await _client
+          .from('users')
+          .select()
+          .eq('role', 'dosen')
+          .ilike('nama', '%$keyword%');
+      return (response as List).map((m) => UserModel.fromMap(m)).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<bool> dosenPunyaJadwal(int dosenId) async {
+    try {
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final response = await _client
+          .from('jadwal_dosen')
+          .select()
+          .eq('dosen_id', dosenId)
+          .eq('status', 'tersedia')
+          .gte('tanggal', today)
+          .limit(1);
+      return (response as List).isNotEmpty;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // === RIWAYAT KONSULTASI ===
+  Future<int> insertKonsultasi(KonsultasiModel data) async {
+    try {
+      final response = await _client.from('riwayat_konsultasi').insert({
+        'mahasiswa_id': data.mahasiswaId,
+        if (data.dosenId != null) 'dosen_id': data.dosenId,
+        'tanggal': data.tanggal,
+        'isi_konsultasi': data.isiKonsultasi,
+        'status': data.status,
+        'created_at': data.createdAt,
+      }).select('id').single();
+      return (response['id'] as int?) ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<List<KonsultasiModel>> getKonsultasiByMahasiswa(int mahasiswaId) async {
+    try {
+      final response = await _client
+          .from('riwayat_konsultasi')
+          .select()
+          .eq('mahasiswa_id', mahasiswaId)
+          .order('tanggal', ascending: false)
+          .order('created_at', ascending: false);
+      return (response as List).map((m) => KonsultasiModel.fromMap(m)).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<int> deleteKonsultasi(int id) async {
+    try {
+      await _client.from('riwayat_konsultasi').delete().eq('id', id);
+      return 1;
+    } catch (e) {
+      return 0;
+    }
+  }
 }
+
 

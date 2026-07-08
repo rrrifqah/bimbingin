@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 import '../database/supabase_service.dart';
 import '../models/booking_model.dart';
+import '../models/user_model.dart';
 
 class BookingProvider with ChangeNotifier {
   List<BookingModel> _bookingList = [];
   bool _isLoading = false;
   String? _error;
+
+  UserModel? _selectedDosenForBooking;
+  UserModel? get selectedDosenForBooking => _selectedDosenForBooking;
+
+  void setSelectedDosenForBooking(UserModel? dosen) {
+    _selectedDosenForBooking = dosen;
+    notifyListeners();
+  }
+
 
   // Cache control - avoid redundant fetches
   int? _lastFetchedUserId;

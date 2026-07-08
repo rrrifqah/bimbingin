@@ -38,6 +38,8 @@ class _BookingScreenState extends State<BookingScreen>
   void dispose() {
     _tabController.dispose();
     _keperluanController.dispose();
+    // Clear selected lecturer for booking on dispose so it doesn't persist
+    context.read<BookingProvider>().setSelectedDosenForBooking(null);
     super.dispose();
   }
 
@@ -51,6 +53,20 @@ class _BookingScreenState extends State<BookingScreen>
   }
 
   Future<void> _loadDosenPembimbing() async {
+    // Check if there is a preselected lecturer in the provider first
+    final bookingProvider = context.read<BookingProvider>();
+    if (bookingProvider.selectedDosenForBooking != null) {
+      final preselected = bookingProvider.selectedDosenForBooking!;
+      if (mounted) {
+        setState(() {
+          _dosenPembimbingId = preselected.id;
+          _namaDosenPembimbing = preselected.nama;
+          _isLoadingDosen = false;
+        });
+      }
+      return;
+    }
+
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) {
       if (mounted) setState(() => _isLoadingDosen = false);
