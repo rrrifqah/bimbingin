@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'admin_dashboard.dart';
 import 'kelola_jadwal_screen.dart';
-import 'update_progres_screen.dart';
+import 'kelola_mahasiswa_screen.dart';
+import 'atur_pembimbing_screen.dart';
 // Import halaman profil bersama untuk semua role
 import '../shared/profile_screen.dart';
 
+/// Bottom navigation untuk role Staff/Admin.
+/// Menu: Booking, Kelola Data, Atur Pembimbing, Profil
 class AdminMain extends StatefulWidget {
   const AdminMain({super.key});
 
@@ -17,10 +20,10 @@ class AdminMainState extends State<AdminMain> {
 
   // Daftar halaman untuk bottom navigation admin/staf
   final List<Widget> _screens = [
-    const AdminDashboard(),
-    const KelolaJadwalScreen(),
-    const UpdateProgresScreen(),
-    const ProfileScreen(), // [FITUR 4] Halaman profil admin
+    const AdminDashboard(),       // Kelola Booking
+    const KelolaMahasiswaScreen(), // Kelola Mahasiswa
+    const AturPembimbingScreen(),  // Atur Dosen Pembimbing
+    const ProfileScreen(),         // Profil Staf
   ];
 
   void setIndex(int index) {
@@ -67,19 +70,18 @@ class AdminMainState extends State<AdminMain> {
             BottomNavigationBarItem(
               icon: Icon(Icons.approval_outlined),
               activeIcon: Icon(Icons.approval),
-              label: 'Persetujuan',
+              label: 'Booking',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.add_task_rounded),
-              activeIcon: Icon(Icons.add_task_rounded),
-              label: 'Kelola Jadwal',
+              icon: Icon(Icons.manage_accounts_outlined),
+              activeIcon: Icon(Icons.manage_accounts),
+              label: 'Mahasiswa',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.edit_note_rounded),
-              activeIcon: Icon(Icons.edit_note_rounded),
-              label: 'Update Progres',
+              icon: Icon(Icons.people_alt_outlined),
+              activeIcon: Icon(Icons.people_alt),
+              label: 'Pembimbing',
             ),
-            // [FITUR 4] Tab Profil ditambahkan
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline_rounded),
               activeIcon: Icon(Icons.person_rounded),

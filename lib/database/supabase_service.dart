@@ -6,6 +6,8 @@ import '../models/progres_model.dart';
 import '../models/validasi_model.dart';
 import '../models/konsultasi_model.dart';
 
+/// Service utama untuk semua operasi database Supabase.
+/// Menggunakan Singleton pattern agar instance hanya satu.
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
   factory SupabaseService() => _instance;
@@ -13,7 +15,11 @@ class SupabaseService {
 
   SupabaseClient get _client => Supabase.instance.client;
 
+  // ============================================================
   // === USERS ===
+  // ============================================================
+
+  /// Insert user baru ke tabel users
   Future<int> insertUser(UserModel user) async {
     final response = await _client.from('users').insert({
       'nama': user.nama,
@@ -23,10 +29,15 @@ class SupabaseService {
       'role': user.role,
       'jurusan': user.jurusan,
       'foto': user.foto,
+      'nidn': user.nidn,
+      'prodi': user.prodi,
+      'bidang_keahlian': user.bidangKeahlian,
+      'phone': user.phone,
     }).select('id').single();
     return (response['id'] as int?) ?? 0;
   }
 
+  /// Ambil user berdasarkan ID
   Future<UserModel?> getUserById(int id) async {
     final response = await _client
         .from('users')
@@ -37,6 +48,7 @@ class SupabaseService {
     return UserModel.fromMap(response);
   }
 
+  /// Login menggunakan nim_nip dan password
   Future<UserModel?> login(String nimNip, String password) async {
     try {
       final response = await _client
@@ -52,36 +64,180 @@ class SupabaseService {
     }
   }
 
+  /// Ambil semua dosen beserta status jadwal mereka
+  /// Status: 'tersedia' jika ada jadwal aktif, 'tidak_ada' jika tidak ada
   Future<List<UserModel>> getAllDosen() async {
     final response = await _client
         .from('users')
         .select()
-        .eq('role', 'dosen');
+        .eq('role', 'dosen')
+        .order('nama', ascending: true);
     return (response as List).map((m) => UserModel.fromMap(m)).toList();
   }
 
+  /// Ambil semua dosen dengan info status jadwal (apakah tersedia)
+  Future<List<Map<String, dynamic>>> getAllDosenWithScheduleStatus() async {
+    try {
+      // Ambil semua dosen
+      final dosenList = await _client
+          .from('users')
+          .select()
+          .eq('role', 'dosen')
+          .order('nama', ascending: true);
+
+      // Ambil jadwal tersedia hari ini atau ke depan
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final jadwalList = await _client
+          .from('jadwal_dosen')
+          .select('dosen_id, status')
+          .eq('status', 'tersedia')
+          .gte('tanggal', today);
+
+      // Buat set dosen yang memiliki jadwal tersedia
+      final dosenWithJadwal = <int>{};
+      for (final j in (jadwalList as List)) {
+        dosenWithJadwal.add(j['dosen_id'] as int);
+      }
+
+      // Gabungkan info
+      return (dosenList as List).map((d) {
+        final result = Map<String, dynamic>.from(d);
+        result['has_jadwal'] = dosenWithJadwal.contains(d['id'] as int);
+        return result;
+      }).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Ambil semua mahasiswa
   Future<List<UserModel>> getAllMahasiswa() async {
     final response = await _client
         .from('users')
         .select()
-        .eq('role', 'mahasiswa');
+        .eq('role', 'mahasiswa')
+        .order('nama', ascending: true);
     return (response as List).map((m) => UserModel.fromMap(m)).toList();
   }
 
+  /// Update data profil pengguna
   Future<int> updateUser(UserModel user) async {
     await _client
         .from('users')
-        .update(user.toMap())
+        .update({
+          'nama': user.nama,
+          'jurusan': user.jurusan,
+          'foto': user.foto,
+          'nidn': user.nidn,
+          'prodi': user.prodi,
+          'bidang_keahlian': user.bidangKeahlian,
+          'phone': user.phone,
+        })
         .eq('id', user.id!);
     return 1;
   }
 
+  /// Hapus user berdasarkan ID
   Future<int> deleteUser(int id) async {
     await _client.from('users').delete().eq('id', id);
     return 1;
   }
 
+  // ============================================================
+  // === DOSEN PEMBIMBING RELASI ===
+  // ============================================================
+
+  /// Mengambil dosen_id pembimbing mahasiswa.
+  /// Pertama cek dari tabel dosen_pembimbing (jika ada), fallback ke progres_skripsi.
+  Future<int?> getDosenPembimbingByMahasiswa(int mahasiswaId) async {
+    try {
+      // Coba dari tabel dosen_pembimbing terlebih dahulu
+      final response = await _client
+          .from('dosen_pembimbing')
+          .select('dosen_id')
+          .eq('mahasiswa_id', mahasiswaId)
+          .maybeSingle();
+      if (response != null) return response['dosen_id'] as int?;
+
+      // Fallback: ambil dari progres_skripsi (relasi lama)
+      final progresResponse = await _client
+          .from('progres_skripsi')
+          .select('dosen_id')
+          .eq('mahasiswa_id', mahasiswaId)
+          .limit(1)
+          .maybeSingle();
+      if (progresResponse == null) return null;
+      return progresResponse['dosen_id'] as int?;
+    } catch (e) {
+      // Jika tabel dosen_pembimbing belum ada, fallback ke progres_skripsi
+      try {
+        final progresResponse = await _client
+            .from('progres_skripsi')
+            .select('dosen_id')
+            .eq('mahasiswa_id', mahasiswaId)
+            .limit(1)
+            .maybeSingle();
+        if (progresResponse == null) return null;
+        return progresResponse['dosen_id'] as int?;
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  /// Menetapkan atau mengubah dosen pembimbing mahasiswa.
+  /// Upsert ke tabel dosen_pembimbing berdasarkan mahasiswa_id.
+  Future<bool> setDosenPembimbing(int mahasiswaId, int dosenId) async {
+    try {
+      await _client.from('dosen_pembimbing').upsert({
+        'mahasiswa_id': mahasiswaId,
+        'dosen_id': dosenId,
+        'updated_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'mahasiswa_id');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Ambil semua relasi dosen pembimbing untuk ditampilkan oleh staf
+  Future<List<Map<String, dynamic>>> getAllDosenPembimbingRelasi() async {
+    try {
+      final response = await _client
+          .from('dosen_pembimbing')
+          .select('*, mahasiswa:mahasiswa_id(nama, nim_nip), dosen:dosen_id(nama, nim_nip, nidn)');
+      return (response as List).map((m) => Map<String, dynamic>.from(m)).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Ambil semua mahasiswa bimbingan milik seorang dosen
+  Future<List<UserModel>> getMahasiswaByDosen(int dosenId) async {
+    try {
+      // Coba dari tabel dosen_pembimbing
+      final response = await _client
+          .from('dosen_pembimbing')
+          .select('mahasiswa_id, mahasiswa:mahasiswa_id(*)')
+          .eq('dosen_id', dosenId);
+
+      final result = <UserModel>[];
+      for (final item in (response as List)) {
+        if (item['mahasiswa'] != null) {
+          result.add(UserModel.fromMap(item['mahasiswa'] as Map<String, dynamic>));
+        }
+      }
+      return result;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // ============================================================
   // === JADWAL DOSEN ===
+  // ============================================================
+
+  /// Insert jadwal baru
   Future<int> insertJadwal(JadwalModel jadwal) async {
     final response = await _client.from('jadwal_dosen').insert({
       'dosen_id': jadwal.dosenId,
@@ -96,14 +252,17 @@ class SupabaseService {
     return (response['id'] as int?) ?? 0;
   }
 
+  /// Ambil jadwal milik dosen tertentu
   Future<List<JadwalModel>> getJadwalByDosen(int dosenId) async {
     final response = await _client
         .from('jadwal_dosen')
         .select()
-        .eq('dosen_id', dosenId);
+        .eq('dosen_id', dosenId)
+        .order('tanggal', ascending: true);
     return (response as List).map((m) => JadwalModel.fromMap(m)).toList();
   }
 
+  /// Ambil jadwal dosen yang masih tersedia (belum lewat dan status 'tersedia')
   Future<List<JadwalModel>> getJadwalTersedia(int dosenId) async {
     final today = DateTime.now().toIso8601String().substring(0, 10);
     final response = await _client
@@ -116,6 +275,7 @@ class SupabaseService {
     return (response as List).map((m) => JadwalModel.fromMap(m)).toList();
   }
 
+  /// Ambil jadwal berdasarkan ID
   Future<JadwalModel?> getJadwalById(int id) async {
     final response = await _client
         .from('jadwal_dosen')
@@ -126,6 +286,7 @@ class SupabaseService {
     return JadwalModel.fromMap(response);
   }
 
+  /// Ambil jadwal berdasarkan tanggal dan dosen
   Future<List<JadwalModel>> getJadwalByTanggal(int dosenId, String tanggal) async {
     final response = await _client
         .from('jadwal_dosen')
@@ -135,6 +296,7 @@ class SupabaseService {
     return (response as List).map((m) => JadwalModel.fromMap(m)).toList();
   }
 
+  /// Update status jadwal (tersedia/penuh)
   Future<int> updateStatusJadwal(int id, String status) async {
     await _client
         .from('jadwal_dosen')
@@ -143,6 +305,7 @@ class SupabaseService {
     return 1;
   }
 
+  /// Update jadwal dosen secara lengkap
   Future<int> updateJadwal(JadwalModel jadwal) async {
     await _client
         .from('jadwal_dosen')
@@ -159,12 +322,17 @@ class SupabaseService {
     return 1;
   }
 
+  /// Hapus jadwal
   Future<int> deleteJadwal(int id) async {
     await _client.from('jadwal_dosen').delete().eq('id', id);
     return 1;
   }
 
+  // ============================================================
   // === BOOKING ===
+  // ============================================================
+
+  /// Insert booking baru
   Future<int> insertBooking(BookingModel booking) async {
     final response = await _client.from('booking').insert({
       'mahasiswa_id': booking.mahasiswaId,
@@ -178,7 +346,7 @@ class SupabaseService {
     return (response['id'] as int?) ?? 0;
   }
 
-  /// Cek apakah mahasiswa sudah booking jadwal tertentu
+  /// Cek apakah mahasiswa sudah booking jadwal tertentu (exclude rejected)
   Future<List<BookingModel>> getBookingByMahasiswaAndJadwal(int mahasiswaId, int jadwalId) async {
     try {
       final response = await _client
@@ -193,6 +361,7 @@ class SupabaseService {
     }
   }
 
+  /// Ambil semua booking milik mahasiswa
   Future<List<BookingModel>> getBookingByMahasiswa(int mahasiswaId) async {
     try {
       final response = await _client
@@ -206,6 +375,7 @@ class SupabaseService {
     }
   }
 
+  /// Ambil semua booking untuk dosen tertentu
   Future<List<BookingModel>> getBookingByDosen(int dosenId) async {
     try {
       final response = await _client
@@ -219,6 +389,7 @@ class SupabaseService {
     }
   }
 
+  /// Ambil semua booking (untuk staf/admin)
   Future<List<BookingModel>> getAllBooking() async {
     try {
       final response = await _client
@@ -231,6 +402,7 @@ class SupabaseService {
     }
   }
 
+  /// Ambil booking berdasarkan ID
   Future<BookingModel?> getBookingById(int id) async {
     try {
       final response = await _client
@@ -245,6 +417,7 @@ class SupabaseService {
     }
   }
 
+  /// Update status booking (approved/rejected) beserta catatan
   Future<int> updateStatusBooking(int id, String status, String? catatanStaf) async {
     await _client
         .from('booking')
@@ -253,12 +426,17 @@ class SupabaseService {
     return 1;
   }
 
+  /// Hapus booking
   Future<int> deleteBooking(int id) async {
     await _client.from('booking').delete().eq('id', id);
     return 1;
   }
 
+  // ============================================================
   // === PROGRES SKRIPSI ===
+  // ============================================================
+
+  /// Insert progres baru
   Future<int> insertProgres(ProgresModel progres) async {
     final response = await _client.from('progres_skripsi').insert({
       'mahasiswa_id': progres.mahasiswaId,
@@ -273,6 +451,7 @@ class SupabaseService {
     return (response['id'] as int?) ?? 0;
   }
 
+  /// Ambil semua progres milik mahasiswa
   Future<List<ProgresModel>> getAllTahapByMahasiswa(int mahasiswaId) async {
     try {
       final response = await _client
@@ -286,6 +465,7 @@ class SupabaseService {
     }
   }
 
+  /// Ambil progres semua mahasiswa bimbingan seorang dosen (dikelompokkan)
   Future<Map<int, List<ProgresModel>>> getAllTahapGroupedByMahasiswaForDosen(int dosenId) async {
     try {
       final response = await _client
@@ -311,6 +491,7 @@ class SupabaseService {
     }
   }
 
+  /// Hitung jumlah progres menunggu konfirmasi milik dosen
   Future<int> countMenungguKonfirmasiByDosen(int dosenId) async {
     try {
       final response = await _client
@@ -324,6 +505,7 @@ class SupabaseService {
     }
   }
 
+  /// Update progres secara lengkap
   Future<int> updateProgres(ProgresModel progres) async {
     await _client.from('progres_skripsi').update({
       'judul_skripsi': progres.judulSkripsi,
@@ -336,6 +518,7 @@ class SupabaseService {
     return 1;
   }
 
+  /// Update status progres (oleh dosen: acc/revisi)
   Future<int> updateStatusProgresById(int id, String status, String? catatan) async {
     try {
       await _client.from('progres_skripsi').update({
@@ -349,6 +532,7 @@ class SupabaseService {
     }
   }
 
+  /// Mahasiswa mengajukan progres ke dosen (status: menunggu_konfirmasi)
   Future<int> ajukanKeDosen(int id, String catatanMahasiswa) async {
     try {
       await _client.from('progres_skripsi').update({
@@ -362,7 +546,57 @@ class SupabaseService {
     }
   }
 
+  // === PROGRES DIKELOLA MAHASISWA ===
+
+  /// Menambah progres baru oleh mahasiswa
+  Future<int> insertProgresByMahasiswa(ProgresModel progres) async {
+    try {
+      final response = await _client.from('progres_skripsi').insert({
+        'mahasiswa_id': progres.mahasiswaId,
+        'dosen_id': progres.dosenId,
+        'judul_skripsi': progres.judulSkripsi,
+        'tahap': progres.tahap,
+        'status': progres.status,
+        'catatan': progres.catatan,
+        'catatan_mahasiswa': progres.catatanMahasiswa,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).select('id').single();
+      return (response['id'] as int?) ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Memperbarui progres oleh mahasiswa (judul, catatan, tahap)
+  Future<int> updateProgresByMahasiswa(ProgresModel progres) async {
+    try {
+      await _client.from('progres_skripsi').update({
+        'judul_skripsi': progres.judulSkripsi,
+        'tahap': progres.tahap,
+        'catatan_mahasiswa': progres.catatanMahasiswa,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', progres.id!);
+      return 1;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Menghapus progres oleh mahasiswa
+  Future<int> deleteProgresByMahasiswa(int id) async {
+    try {
+      await _client.from('progres_skripsi').delete().eq('id', id);
+      return 1;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // ============================================================
   // === VALIDASI KEHADIRAN ===
+  // ============================================================
+
+  /// Insert data validasi kehadiran
   Future<int> insertValidasi(ValidasiModel validasi) async {
     final response = await _client.from('validasi_kehadiran').insert({
       'booking_id': validasi.bookingId,
@@ -375,6 +609,7 @@ class SupabaseService {
     return (response['id'] as int?) ?? 0;
   }
 
+  /// Ambil validasi berdasarkan booking_id
   Future<ValidasiModel?> getValidasiByBooking(int bookingId) async {
     final response = await _client
         .from('validasi_kehadiran')
@@ -385,6 +620,7 @@ class SupabaseService {
     return ValidasiModel.fromMap(response);
   }
 
+  /// Update data validasi
   Future<int> updateValidasi(int id, String statusHadir, String? catatan) async {
     await _client.from('validasi_kehadiran').update({
       'status_hadir': statusHadir,
@@ -394,7 +630,11 @@ class SupabaseService {
     return 1;
   }
 
-  // === TARGET BIMBINGAN ===
+  // ============================================================
+  // === TARGET BIMBINGAN (dipertahankan untuk backward compat) ===
+  // ============================================================
+
+  /// Ambil target bimbingan mahasiswa
   Future<Map<String, dynamic>?> getTargetByMahasiswa(int mahasiswaId) async {
     try {
       final response = await _client
@@ -408,9 +648,9 @@ class SupabaseService {
     }
   }
 
+  /// Ambil semua target untuk dosen
   Future<List<Map<String, dynamic>>> getAllTargetByDosen(int dosenId) async {
     try {
-      // Ambil semua mahasiswa_id yang memiliki progres dengan dosen ini
       final progresResponse = await _client
           .from('progres_skripsi')
           .select('mahasiswa_id')
@@ -441,6 +681,7 @@ class SupabaseService {
     }
   }
 
+  /// Upsert target bimbingan mahasiswa
   Future<int> upsertTarget(int mahasiswaId, String targetSelesai, int createdBy) async {
     try {
       await _client.from('target_bimbingan').upsert({
@@ -517,76 +758,5 @@ class SupabaseService {
       return 0;
     }
   }
-
-  // === FITUR PENCARIAN DOSEN ===
-  Future<List<UserModel>> searchDosen(String keyword) async {
-    try {
-      final response = await _client
-          .from('users')
-          .select()
-          .eq('role', 'dosen')
-          .ilike('nama', '%$keyword%');
-      return (response as List).map((m) => UserModel.fromMap(m)).toList();
-    } catch (e) {
-      return [];
-    }
-  }
-
-  Future<bool> dosenPunyaJadwal(int dosenId) async {
-    try {
-      final today = DateTime.now().toIso8601String().substring(0, 10);
-      final response = await _client
-          .from('jadwal_dosen')
-          .select()
-          .eq('dosen_id', dosenId)
-          .eq('status', 'tersedia')
-          .gte('tanggal', today)
-          .limit(1);
-      return (response as List).isNotEmpty;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // === RIWAYAT KONSULTASI ===
-  Future<int> insertKonsultasi(KonsultasiModel data) async {
-    try {
-      final response = await _client.from('riwayat_konsultasi').insert({
-        'mahasiswa_id': data.mahasiswaId,
-        if (data.dosenId != null) 'dosen_id': data.dosenId,
-        'tanggal': data.tanggal,
-        'isi_konsultasi': data.isiKonsultasi,
-        'status': data.status,
-        'created_at': data.createdAt,
-      }).select('id').single();
-      return (response['id'] as int?) ?? 0;
-    } catch (e) {
-      return 0;
-    }
-  }
-
-  Future<List<KonsultasiModel>> getKonsultasiByMahasiswa(int mahasiswaId) async {
-    try {
-      final response = await _client
-          .from('riwayat_konsultasi')
-          .select()
-          .eq('mahasiswa_id', mahasiswaId)
-          .order('tanggal', ascending: false)
-          .order('created_at', ascending: false);
-      return (response as List).map((m) => KonsultasiModel.fromMap(m)).toList();
-    } catch (e) {
-      return [];
-    }
-  }
-
-  Future<int> deleteKonsultasi(int id) async {
-    try {
-      await _client.from('riwayat_konsultasi').delete().eq('id', id);
-      return 1;
-    } catch (e) {
-      return 0;
-    }
-  }
 }
-
 

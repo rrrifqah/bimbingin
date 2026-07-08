@@ -5,6 +5,8 @@ import 'progres_screen.dart';
 // Import halaman profil bersama untuk semua role
 import '../shared/profile_screen.dart';
 
+/// Bottom navigation untuk role Mahasiswa.
+/// Tab: Dashboard (Daftar Dosen), Booking, Progres, Profil
 class MahasiswaMain extends StatefulWidget {
   const MahasiswaMain({super.key});
 
@@ -16,11 +18,12 @@ class MahasiswaMainState extends State<MahasiswaMain> {
   int _currentIndex = 0;
 
   // Daftar halaman untuk bottom navigation mahasiswa
+  // Target Waktu Bimbingan telah dihapus sesuai permintaan
   final List<Widget> _screens = [
-    const MahasiswaDashboard(),
-    const BookingScreen(),
-    const ProgresScreen(),
-    const ProfileScreen(), // [FITUR 4] Halaman profil mahasiswa
+    const MahasiswaDashboard(), // Dashboard → Daftar Dosen
+    const BookingScreen(),      // Riwayat & Jadwal Booking
+    const ProgresScreen(),      // Progres Skripsi
+    const ProfileScreen(),      // Profil Mahasiswa
   ];
 
   void setIndex(int index) {
@@ -65,9 +68,9 @@ class MahasiswaMainState extends State<MahasiswaMain> {
           elevation: 0,
           items: const [
             BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
-              label: 'Dashboard',
+              icon: Icon(Icons.people_outline_rounded),
+              activeIcon: Icon(Icons.people_rounded),
+              label: 'Dosen',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.calendar_month_outlined),
@@ -79,7 +82,6 @@ class MahasiswaMainState extends State<MahasiswaMain> {
               activeIcon: Icon(Icons.analytics),
               label: 'Progres',
             ),
-            // [FITUR 4] Tab Profil ditambahkan
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline_rounded),
               activeIcon: Icon(Icons.person_rounded),

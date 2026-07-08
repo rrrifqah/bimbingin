@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/progres_provider.dart';
-import '../../providers/booking_provider.dart';
-import 'mahasiswa_main.dart';
 import '../../database/supabase_service.dart';
 import '../../models/user_model.dart';
+import 'dosen_detail_screen.dart';
 
+/// Dashboard Mahasiswa — menampilkan daftar semua dosen yang dapat di-browse.
+/// Mahasiswa dapat mencari dosen, melihat detail, dan booking (jika pembimbing).
 class MahasiswaDashboard extends StatefulWidget {
   const MahasiswaDashboard({super.key});
 
@@ -17,20 +15,20 @@ class MahasiswaDashboard extends StatefulWidget {
 }
 
 class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
-  bool _dataLoaded = false;
+  // State untuk daftar dosen dan pencarian
+  List<Map<String, dynamic>> _allDosen = [];
+  List<Map<String, dynamic>> _filteredDosen = [];
+  bool _isLoading = true;
+  String _searchQuery = '';
+  int? _dosenPembimbingId; // ID dosen pembimbing mahasiswa
 
   final TextEditingController _searchController = TextEditingController();
-  List<UserModel> _allDosen = [];
-  List<UserModel> _filteredDosenList = [];
-  final Map<int, bool> _availabilityCache = {};
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_dataLoaded) {
-      _dataLoaded = true;
-      _loadData();
-    }
+  void initState() {
+    super.initState();
+    // Load data setelah frame pertama render (agar context tersedia)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
   @override
@@ -39,138 +37,107 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
     super.dispose();
   }
 
-  Color _getRandomColorForDosen(UserModel doc) {
-    final int hash = doc.nama.hashCode;
-    final List<Color> colors = [
-      const Color(0xFF3B4FE4),
-      const Color(0xFF22C55E),
-      const Color(0xFFEF4444),
-      const Color(0xFFF59E0B),
-      const Color(0xFF6C63FF),
-      const Color(0xFFEC4899),
-      const Color(0xFF8B5CF6),
-      const Color(0xFF14B8A6),
-      const Color(0xFFF97316),
-    ];
-    return colors[hash.abs() % colors.length];
-  }
-
+  /// Memuat daftar dosen dan info dosen pembimbing mahasiswa
   Future<void> _loadData() async {
-    final auth = context.read<AuthProvider>();
-    final user = auth.currentUser;
+    final user = context.read<AuthProvider>().currentUser;
     if (user == null) return;
 
-    // Load thesis progress to get title if available
-    await context.read<ProgresProvider>().fetchTahapMahasiswa(user.id!);
+    if (mounted) setState(() => _isLoading = true);
 
-    // Load lecturers list and apply shared preference sorting
-    await _loadDosenList();
-  }
-
-  Future<void> _loadDosenList() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final lastClickedId = prefs.getInt('last_clicked_dosen_id');
-
       final supabase = SupabaseService();
-      final lecturers = await supabase.getAllDosen();
 
-      if (lastClickedId != null) {
-        final lastClickedIndex = lecturers.indexWhere((l) => l.id == lastClickedId);
-        if (lastClickedIndex != -1) {
-          final lastClickedDosen = lecturers.removeAt(lastClickedIndex);
-          lecturers.insert(0, lastClickedDosen);
-        }
-      }
+      // Load paralel: daftar dosen dan dosen pembimbing
+      final results = await Future.wait([
+        supabase.getAllDosenWithScheduleStatus(),
+        supabase.getDosenPembimbingByMahasiswa(user.id!),
+      ]);
+
+      final dosenList = results[0] as List<Map<String, dynamic>>;
+      final dosenPembimbingId = results[1] as int?;
 
       if (mounted) {
         setState(() {
-          _allDosen = lecturers;
-          _filterDosenList(_searchController.text);
+          _allDosen = dosenList;
+          _dosenPembimbingId = dosenPembimbingId;
+          _filteredDosen = dosenList;
+          _isLoading = false;
         });
       }
-
-      // Load availability in background
-      for (final doc in lecturers) {
-        if (!_availabilityCache.containsKey(doc.id)) {
-          supabase.dosenPunyaJadwal(doc.id!).then((available) {
-            if (mounted) {
-              setState(() {
-                _availabilityCache[doc.id!] = available;
-              });
-            }
-          });
-        }
-      }
     } catch (e) {
-      debugPrint("Error loading lecturers: $e");
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _filterDosenList(String query) {
-    if (query.trim().isEmpty) {
-      setState(() {
-        _filteredDosenList = List.from(_allDosen);
-      });
-      return;
-    }
-
-    final lowercaseQuery = query.toLowerCase();
+  /// Filter dosen berdasarkan query pencarian
+  void _onSearchChanged(String query) {
     setState(() {
-      _filteredDosenList = _allDosen.where((doc) {
-        return doc.nama.toLowerCase().contains(lowercaseQuery);
-      }).toList();
+      _searchQuery = query.toLowerCase();
+      if (_searchQuery.isEmpty) {
+        _filteredDosen = _allDosen;
+      } else {
+        _filteredDosen = _allDosen.where((d) {
+          final nama = (d['nama'] ?? '').toString().toLowerCase();
+          final nidn = (d['nidn'] ?? '').toString().toLowerCase();
+          final prodi = (d['prodi'] ?? '').toString().toLowerCase();
+          final bidang = (d['bidang_keahlian'] ?? '').toString().toLowerCase();
+          return nama.contains(_searchQuery) ||
+              nidn.contains(_searchQuery) ||
+              prodi.contains(_searchQuery) ||
+              bidang.contains(_searchQuery);
+        }).toList();
+      }
     });
+  }
+
+  /// Buka halaman detail dosen
+  void _openDosenDetail(Map<String, dynamic> dosenData) {
+    final dosenModel = UserModel.fromMap(dosenData);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DosenDetailScreen(
+          dosen: dosenModel,
+          isPembimbing: _dosenPembimbingId == dosenModel.id,
+        ),
+      ),
+    ).then((_) => _loadData()); // Refresh setelah kembali dari detail
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final progresProvider = context.watch<ProgresProvider>();
     final user = auth.currentUser;
     final primaryColor = Theme.of(context).primaryColor;
     const Color textDark = Color(0xFF2D3142);
     const Color textGrey = Color(0xFF9098B1);
 
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
-    final tahapList = progresProvider.tahapMahasiswa;
-    final judulSkripsi = tahapList.isNotEmpty ? tahapList.first.judulSkripsi : '';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FB),
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadData,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(vertical: 16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Greeting Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Row(
+        child: Column(
+          children: [
+            // ===== HEADER =====
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              color: Colors.white,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Baris nama + icon logout
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Halo 👋,',
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  color: textGrey,
-                                  fontWeight: FontWeight.w500),
-                            ),
                             Text(
-                              user.nama,
+                              'Halo, ${user.nama.split(' ').first} 👋',
                               style: const TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
@@ -178,289 +145,326 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
+                            const SizedBox(height: 2),
                             Text(
-                              'NIM: ${user.nimNip} | ${user.jurusan}',
+                              'Temukan dosen dan jadwal bimbingan',
                               style: const TextStyle(
-                                  fontSize: 12, color: textGrey),
+                                  fontSize: 13, color: textGrey),
                             ),
                           ],
                         ),
                       ),
-                      GestureDetector(
-                        onTap: () async {
-                          final nav = Navigator.of(context);
-                          await context.read<AuthProvider>().logout();
-                          nav.popUntil((route) => route.isFirst);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.red.shade50,
-                            shape: BoxShape.circle,
+                      // Tombol refresh
+                      IconButton(
+                        onPressed: _loadData,
+                        icon: Icon(Icons.refresh_rounded, color: primaryColor),
+                        tooltip: 'Refresh',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ===== SEARCH BAR =====
+                  TextField(
+                    controller: _searchController,
+                    onChanged: _onSearchChanged,
+                    decoration: InputDecoration(
+                      hintText: 'Cari dosen, NIDN, prodi, atau bidang keahlian...',
+                      hintStyle: const TextStyle(
+                          fontSize: 13, color: textGrey),
+                      prefixIcon: const Icon(Icons.search, color: textGrey),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, color: textGrey, size: 18),
+                              onPressed: () {
+                                _searchController.clear();
+                                _onSearchChanged('');
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: const Color(0xFFF4F7FB),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: primaryColor, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ===== HASIL / DAFTAR DOSEN =====
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredDosen.isEmpty
+                      ? _buildEmptyState()
+                      : RefreshIndicator(
+                          onRefresh: _loadData,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _filteredDosen.length,
+                            itemBuilder: (context, index) {
+                              return _buildDosenCard(
+                                  _filteredDosen[index], primaryColor);
+                            },
                           ),
-                          child: const Icon(Icons.logout_rounded,
-                              color: Colors.redAccent, size: 22),
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Widget empty state saat tidak ada dosen ditemukan
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.search_off_rounded, size: 72, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text(
+            _searchQuery.isEmpty
+                ? 'Belum ada data dosen.'
+                : 'Dosen "$_searchQuery" tidak ditemukan.',
+            style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF9098B1)),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Card dosen dalam ListView
+  Widget _buildDosenCard(Map<String, dynamic> data, Color primaryColor) {
+    final dosen = UserModel.fromMap(data);
+    final hasJadwal = data['has_jadwal'] as bool? ?? false;
+    final isPembimbing = _dosenPembimbingId == dosen.id;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: isPembimbing
+            ? Border.all(color: primaryColor.withOpacity(0.4), width: 1.5)
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ===== FOTO PROFIL =====
+                _buildAvatar(dosen, primaryColor),
+                const SizedBox(width: 14),
+
+                // ===== INFO DOSEN =====
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Badge "Pembimbing Saya" jika ini dosen pembimbing
+                      if (isPembimbing) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.verified_rounded, size: 12, color: primaryColor),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Pembimbing Saya',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+
+                      // Nama dosen
+                      Text(
+                        dosen.nama,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2D3142),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+
+                      // NIDN
+                      if (dosen.nidn != null && dosen.nidn!.isNotEmpty)
+                        _buildInfoChip(
+                            Icons.badge_outlined, 'NIDN: ${dosen.nidn}'),
+
+                      // Program Studi
+                      if (dosen.prodi != null && dosen.prodi!.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        _buildInfoChip(Icons.school_outlined, dosen.prodi!),
+                      ] else ...[
+                        const SizedBox(height: 3),
+                        _buildInfoChip(Icons.school_outlined, dosen.jurusan),
+                      ],
+
+                      // Bidang Keahlian
+                      if (dosen.bidangKeahlian != null && dosen.bidangKeahlian!.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        _buildInfoChip(
+                            Icons.lightbulb_outlined, dosen.bidangKeahlian!),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+
+            // Baris bawah: Status Jadwal + Tombol Lihat Detail
+            Row(
+              children: [
+                // Status jadwal
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: hasJadwal
+                        ? Colors.green.withOpacity(0.1)
+                        : Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        hasJadwal ? Icons.event_available : Icons.event_busy,
+                        size: 13,
+                        color: hasJadwal ? Colors.green : Colors.grey,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        hasJadwal ? 'Jadwal Tersedia' : 'Tidak Ada Jadwal',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: hasJadwal ? Colors.green : Colors.grey,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const Spacer(),
 
-                // Title of thesis card
-                if (judulSkripsi.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [primaryColor, primaryColor.withValues(alpha: 0.85)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: primaryColor.withValues(alpha: 0.2),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          )
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.menu_book_rounded,
-                                  color: Colors.white, size: 20),
-                              SizedBox(width: 8),
-                              Text(
-                                'Judul Skripsi',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '"$judulSkripsi"',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              fontStyle: FontStyle.italic,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                // Tombol Lihat Detail
+                ElevatedButton.icon(
+                  onPressed: () => _openDosenDetail(data),
+                  icon: const Icon(Icons.info_outline, size: 15, color: Colors.white),
+                  label: const Text(
+                    'Lihat Detail',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
                   ),
-                  const SizedBox(height: 24),
-                ],
-
-                // Search Bar Section
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (value) {
-                      _filterDosenList(value);
-                    },
-                    decoration: InputDecoration(
-                      hintText: "Cari nama dosen pembimbing...",
-                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF9098B1)),
-                      prefixIcon: const Icon(Icons.search, color: Color(0xFF3B4FE4)),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.grey),
-                              onPressed: () {
-                                _searchController.clear();
-                                _filterDosenList('');
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF3B4FE4), width: 1.0),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF3B4FE4), width: 1.5),
-                      ),
-                    ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
                   ),
                 ),
-                const SizedBox(height: 16),
-
-                // List Dosen
-                _allDosen.isEmpty
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 32.0),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                    : _filteredDosenList.isEmpty
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 32.0),
-                              child: Text(
-                                "Dosen tidak ditemukan",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _filteredDosenList.length,
-                            separatorBuilder: (context, index) => const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final doc = _filteredDosenList[index];
-                              final hasSchedule = _availabilityCache[doc.id] ?? false;
-
-                              // Decode base64 image if available
-                              ImageProvider? imageProvider;
-                              if (doc.foto != null && doc.foto!.isNotEmpty) {
-                                try {
-                                  imageProvider = MemoryImage(base64Decode(doc.foto!));
-                                } catch (_) {}
-                              }
-
-                              return Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.04),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(12),
-                                    onTap: () async {
-                                      final prefs = await SharedPreferences.getInstance();
-                                      await prefs.setInt('last_clicked_dosen_id', doc.id!);
-
-                                      if (!context.mounted) return;
-
-                                      setState(() {
-                                        final indexInAll = _allDosen.indexWhere((l) => l.id == doc.id);
-                                        if (indexInAll != -1) {
-                                          final clicked = _allDosen.removeAt(indexInAll);
-                                          _allDosen.insert(0, clicked);
-                                        }
-                                        _filterDosenList(_searchController.text);
-                                      });
-
-                                      context.read<BookingProvider>().setSelectedDosenForBooking(doc);
-                                      
-                                      final rootState = context.findAncestorStateOfType<MahasiswaMainState>();
-                                      if (rootState != null) {
-                                        rootState.setIndex(1);
-                                      }
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Row(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 30, // 60x60
-                                            backgroundImage: imageProvider,
-                                            backgroundColor: imageProvider == null
-                                                ? _getRandomColorForDosen(doc)
-                                                : null,
-                                            child: imageProvider == null
-                                                ? Text(
-                                                    doc.nama.isNotEmpty ? doc.nama[0].toUpperCase() : 'D',
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 24,
-                                                    ),
-                                                  )
-                                                : null,
-                                          ),
-                                          const SizedBox(width: 16),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  doc.nama,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 15,
-                                                    color: Color(0xFF2D3142),
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  doc.jurusan,
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 6),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                                  decoration: BoxDecoration(
-                                                    color: hasSchedule
-                                                        ? const Color(0xFF22C55E).withValues(alpha: 0.1)
-                                                        : Colors.grey.withValues(alpha: 0.1),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                  ),
-                                                  child: Text(
-                                                    hasSchedule ? 'Tersedia' : 'Penuh',
-                                                    style: TextStyle(
-                                                      color: hasSchedule ? const Color(0xFF22C55E) : Colors.grey.shade600,
-                                                      fontSize: 10,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                const SizedBox(height: 32),
               ],
             ),
-          ),
+          ],
         ),
       ),
+    );
+  }
+
+  /// Avatar dosen (foto atau inisial)
+  Widget _buildAvatar(UserModel dosen, Color primaryColor) {
+    return Container(
+      width: 58,
+      height: 58,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: primaryColor.withOpacity(0.1),
+        border: Border.all(color: primaryColor.withOpacity(0.2), width: 2),
+      ),
+      child: ClipOval(
+        child: dosen.foto != null && dosen.foto!.startsWith('http')
+            ? Image.network(
+                dosen.foto!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    _buildInitialAvatar(dosen.nama, primaryColor),
+              )
+            : _buildInitialAvatar(dosen.nama, primaryColor),
+      ),
+    );
+  }
+
+  /// Avatar inisial nama
+  Widget _buildInitialAvatar(String nama, Color primaryColor) {
+    return Center(
+      child: Text(
+        nama.isNotEmpty ? nama[0].toUpperCase() : 'D',
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: primaryColor,
+        ),
+      ),
+    );
+  }
+
+  /// Chip info kecil (ikon + teks)
+  Widget _buildInfoChip(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 12, color: const Color(0xFF9098B1)),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF9098B1)),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }

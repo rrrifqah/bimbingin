@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/target_provider.dart';
 import '../../database/supabase_service.dart';
-import '../../models/user_model.dart';
 import '../../models/booking_model.dart';
 
+/// Dashboard Staff — menampilkan semua booking dengan filter status.
+/// Staff dapat menyetujui atau menolak booking dari mahasiswa.
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
 
@@ -34,8 +34,9 @@ class _AdminDashboardState extends State<AdminDashboard>
     super.dispose();
   }
 
+  /// Memuat semua data booking dari Supabase
   Future<void> _loadBooking() async {
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     try {
       _allBooking = await _dbHelper.getAllBooking();
     } catch (e) {
@@ -44,8 +45,8 @@ class _AdminDashboardState extends State<AdminDashboard>
     if (mounted) setState(() => _isLoading = false);
   }
 
-  Future<void> _updateStatus(
-      int id, String status, String? catatan) async {
+  /// Update status booking (approved/rejected)
+  Future<void> _updateStatus(int id, String status, String? catatan) async {
     try {
       await _dbHelper.updateStatusBooking(id, status, catatan);
       await _loadBooking();
@@ -70,8 +71,7 @@ class _AdminDashboardState extends State<AdminDashboard>
     const Color textGrey = Color(0xFF9098B1);
 
     final pendingList = _allBooking.where((b) => b.status == 'pending').toList();
-    final approvedList =
-        _allBooking.where((b) => b.status == 'approved').toList();
+    final approvedList = _allBooking.where((b) => b.status == 'approved').toList();
     final historyList = _allBooking
         .where((b) => b.status == 'rejected' || b.status == 'completed')
         .toList();
@@ -89,6 +89,7 @@ class _AdminDashboardState extends State<AdminDashboard>
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Color(0xFF9098B1)),
             onPressed: _loadBooking,
+            tooltip: 'Refresh',
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
@@ -97,6 +98,7 @@ class _AdminDashboardState extends State<AdminDashboard>
               if (!mounted) return;
               Navigator.popUntil(context, (route) => route.isFirst);
             },
+            tooltip: 'Logout',
           ),
         ],
         bottom: TabBar(
@@ -140,6 +142,7 @@ class _AdminDashboardState extends State<AdminDashboard>
       body: SafeArea(
         child: Column(
           children: [
+            // Header info user
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -155,13 +158,14 @@ class _AdminDashboardState extends State<AdminDashboard>
                         color: textDark),
                   ),
                   const SizedBox(height: 2),
-                  const Text(
-                    'Persetujuan jadwal bimbingan masuk dari mahasiswa.',
-                    style: TextStyle(fontSize: 12, color: textGrey),
+                  Text(
+                    '${_allBooking.length} total booking | ${pendingList.length} menunggu persetujuan',
+                    style: const TextStyle(fontSize: 12, color: textGrey),
                   ),
                 ],
               ),
             ),
+            // Daftar booking
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -206,255 +210,227 @@ class _AdminDashboardState extends State<AdminDashboard>
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: list.length,
-      itemBuilder: (context, index) {
-        final booking = list[index];
+    return RefreshIndicator(
+      onRefresh: _loadBooking,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: list.length,
+        itemBuilder: (context, index) {
+          final booking = list[index];
 
-        Color badgeColor;
-        String badgeLabel;
-        switch (booking.status.toLowerCase()) {
-          case 'approved':
-            badgeColor = Colors.green;
-            badgeLabel = 'Disetujui';
-            break;
-          case 'rejected':
-            badgeColor = Colors.red;
-            badgeLabel = 'Ditolak';
-            break;
-          case 'completed':
-            badgeColor = Colors.blue;
-            badgeLabel = 'Selesai';
-            break;
-          default:
-            badgeColor = Colors.orange;
-            badgeLabel = 'Menunggu';
-        }
+          Color badgeColor;
+          String badgeLabel;
+          switch (booking.status.toLowerCase()) {
+            case 'approved':
+              badgeColor = Colors.green;
+              badgeLabel = 'Disetujui';
+              break;
+            case 'rejected':
+              badgeColor = Colors.red;
+              badgeLabel = 'Ditolak';
+              break;
+            case 'completed':
+              badgeColor = Colors.blue;
+              badgeLabel = 'Selesai';
+              break;
+            default:
+              badgeColor = Colors.orange;
+              badgeLabel = 'Menunggu';
+          }
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: booking.status == 'pending'
-                  ? Colors.orange.shade100
-                  : Colors.grey.shade200,
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: booking.status == 'pending'
+                    ? Colors.orange.shade100
+                    : Colors.grey.shade200,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                )
+              ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              )
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: badgeColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      badgeLabel,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: badgeColor,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '#${booking.id}',
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: textGrey),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Mahasiswa
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: primaryColor.withValues(alpha: 0.1),
-                    child: Text(
-                      booking.namaMahasiswa != null &&
-                              booking.namaMahasiswa!.isNotEmpty
-                          ? booking.namaMahasiswa![0]
-                          : 'M',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: primaryColor,
-                          fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          booking.namaMahasiswa ?? 'Mahasiswa',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: textDark,
-                              fontSize: 14),
-                        ),
-                        Text(
-                          booking.nim != null ? 'NIM: ${booking.nim}' : '',
-                          style:
-                              const TextStyle(color: textGrey, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-
-              Row(
-                children: [
-                  const Icon(Icons.person_outline_rounded,
-                      size: 14, color: textGrey),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Dosen: ${booking.namaDosen ?? '-'}',
-                      style: const TextStyle(
-                          fontSize: 12,
-                          color: textDark,
-                          fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(Icons.calendar_today_rounded,
-                      size: 14, color: textGrey),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Tanggal: ${booking.tanggal ?? '-'} @ ${booking.jam ?? '-'}',
-                    style: const TextStyle(
-                        fontSize: 12,
-                        color: textDark,
-                        fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.info_outline_rounded,
-                      size: 14, color: textGrey),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Keperluan: ${booking.keperluan}',
-                      style:
-                          const TextStyle(fontSize: 12, color: textDark),
-                    ),
-                  ),
-                ],
-              ),
-
-              if (booking.catatanStaf != null &&
-                  booking.catatanStaf!.isNotEmpty) ...[
-                const SizedBox(height: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Badge status + ID
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Icon(Icons.notes_rounded,
-                        size: 14, color: textGrey),
-                    const SizedBox(width: 6),
-                    Expanded(
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
                       child: Text(
-                        'Catatan: ${booking.catatanStaf}',
-                        style: const TextStyle(
-                            fontSize: 12, color: textGrey),
+                        badgeLabel,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: badgeColor,
+                        ),
                       ),
+                    ),
+                    Text(
+                      '#${booking.id}',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: textGrey),
                     ),
                   ],
                 ),
-              ],
+                const SizedBox(height: 12),
 
-              if (showActions) ...[
-                const SizedBox(height: 16),
+                // Mahasiswa
                 Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () async {
-                          await _updateStatus(booking.id!, 'rejected', null);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Booking ditolak.'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('Tolak'),
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Theme.of(context)
+                          .primaryColor
+                          .withOpacity(0.1),
+                      child: Text(
+                        booking.namaMahasiswa != null &&
+                                booking.namaMahasiswa!.isNotEmpty
+                            ? booking.namaMahasiswa![0]
+                            : 'M',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).primaryColor,
+                            fontSize: 12),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          await _updateStatus(
-                              booking.id!, 'approved', null);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Booking disetujui.'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          elevation: 0,
-                        ),
-                        child: const Text('Terima',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            booking.namaMahasiswa ?? 'Mahasiswa',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: textDark,
+                                fontSize: 14),
+                          ),
+                          if (booking.nim != null)
+                            Text(
+                              'NIM: ${booking.nim}',
+                              style: const TextStyle(
+                                  color: textGrey, fontSize: 11),
+                            ),
+                        ],
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+
+                // Info booking
+                _buildInfoRow(Icons.person_outline_rounded,
+                    'Dosen: ${booking.namaDosen ?? '-'}'),
+                const SizedBox(height: 4),
+                _buildInfoRow(Icons.calendar_today_rounded,
+                    'Tanggal: ${booking.tanggal ?? '-'} ${booking.jam != null ? "@ ${booking.jam}" : ""}'),
+                const SizedBox(height: 4),
+                _buildInfoRow(
+                    Icons.info_outline_rounded, 'Keperluan: ${booking.keperluan}'),
+
+                if (booking.catatanStaf != null &&
+                    booking.catatanStaf!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  _buildInfoRow(Icons.notes_rounded,
+                      'Catatan: ${booking.catatanStaf}'),
+                ],
+
+                // Tombol aksi (hanya untuk pending)
+                if (showActions) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            await _updateStatus(booking.id!, 'rejected', null);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Booking ditolak.'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('Tolak'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            await _updateStatus(booking.id!, 'approved', null);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Booking disetujui.'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                            elevation: 0,
+                          ),
+                          child: const Text('Terima',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
-            ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: const Color(0xFF9098B1)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF2D3142)),
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 }
