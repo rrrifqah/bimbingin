@@ -68,9 +68,9 @@ class AdminMainState extends State<AdminMain> {
           elevation: 0,
           items: const [
             BottomNavigationBarItem(
-              icon: Icon(Icons.approval_outlined),
-              activeIcon: Icon(Icons.approval),
-              label: 'Booking',
+              icon: Icon(Icons.dashboard_customize_outlined),
+              activeIcon: Icon(Icons.dashboard_customize),
+              label: 'Monitoring',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.manage_accounts_outlined),

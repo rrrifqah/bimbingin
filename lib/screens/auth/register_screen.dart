@@ -39,9 +39,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final nimNip = _nimNipController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
-    final jurusan = _jurusanController.text.trim();
+    const jurusan = 'Teknik Informatika';
 
-    if (nama.isEmpty || nimNip.isEmpty || email.isEmpty || password.isEmpty || jurusan.isEmpty) {
+    if (nama.isEmpty || nimNip.isEmpty || email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Semua kolom harus diisi!'),
@@ -184,10 +184,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               _buildLabel('Email'),
               _buildTextField(_emailController, 'Masukkan Email', Icons.email_outlined, keyboardType: TextInputType.emailAddress),
 
-              // Jurusan Field
-              _buildLabel('Jurusan / Bagian'),
-              _buildTextField(_jurusanController, 'Masukkan Jurusan / Bagian', Icons.school_outlined),
-              
               // Role Dropdown
               _buildLabel('Peran'),
               const SizedBox(height: 8),

@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import '../../database/supabase_service.dart';
 import '../../models/user_model.dart';
 
-/// Halaman untuk Staff menentukan atau mengubah dosen pembimbing mahasiswa.
-/// Alur: Pilih Mahasiswa → Pilih Dosen → Simpan ke Supabase
+/// Halaman untuk Staff memantau dan mengelola hubungan Dosen Pembimbing - Mahasiswa.
+/// Menampilkan daftar dosen beserta mahasiswa bimbingannya.
+/// Staff dapat mengubah dosen pembimbing mahasiswa atau menentukan pembimbing baru.
 class AturPembimbingScreen extends StatefulWidget {
   const AturPembimbingScreen({super.key});
 
@@ -11,115 +12,318 @@ class AturPembimbingScreen extends StatefulWidget {
   State<AturPembimbingScreen> createState() => _AturPembimbingScreenState();
 }
 
-class _AturPembimbingScreenState extends State<AturPembimbingScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  // Data untuk tab "Atur Baru"
-  List<UserModel> _mahasiswaList = [];
+class _AturPembimbingScreenState extends State<AturPembimbingScreen> {
   List<UserModel> _dosenList = [];
-  UserModel? _selectedMahasiswa;
-  UserModel? _selectedDosen;
-  bool _isLoadingSetup = true;
-  bool _isSubmitting = false;
-
-  // Data untuk tab "Daftar Relasi"
-  List<Map<String, dynamic>> _relasiList = [];
-  bool _isLoadingRelasi = true;
+  List<UserModel> _allMahasiswaList = [];
+  Map<int, List<UserModel>> _dosenMahasiswaMap = {};
+  bool _isLoading = true;
 
   final SupabaseService _service = SupabaseService();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _loadData();
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  /// Memuat data mahasiswa, dosen, dan relasi yang sudah ada
+  /// Memuat data dosen, mahasiswa, dan relasi pembimbing secara realtime
   Future<void> _loadData() async {
-    if (mounted) {
-      setState(() {
-        _isLoadingSetup = true;
-        _isLoadingRelasi = true;
-      });
-    }
+    if (mounted) setState(() => _isLoading = true);
 
     try {
-      // Load paralel
       final results = await Future.wait([
-        _service.getAllMahasiswa(),
         _service.getAllDosen(),
+        _service.getAllMahasiswa(),
         _service.getAllDosenPembimbingRelasi(),
       ]);
 
+      final dosenList = results[0] as List<UserModel>;
+      final mahasiswaList = results[1] as List<UserModel>;
+      final relasiList = results[2] as List<Map<String, dynamic>>;
+
+      // Buat pemetaan dosen -> daftar mahasiswa bimbingan
+      final map = <int, List<UserModel>>{};
+      for (final d in dosenList) {
+        map[d.id!] = [];
+      }
+
+      for (final rel in relasiList) {
+        final dId = rel['dosen_id'] as int?;
+        final mId = rel['mahasiswa_id'] as int?;
+        if (dId != null && mId != null) {
+          final mData = rel['mahasiswa'] as Map<String, dynamic>?;
+          if (mData != null) {
+            final student = UserModel(
+              id: mId,
+              nama: mData['nama'] ?? 'Mahasiswa',
+              nimNip: mData['nim_nip'] ?? '-',
+              email: '',
+              password: '',
+              role: 'mahasiswa',
+              jurusan: 'Teknik Informatika',
+            );
+            map.putIfAbsent(dId, () => []);
+            map[dId]!.add(student);
+          }
+        }
+      }
+
       if (mounted) {
         setState(() {
-          _mahasiswaList = results[0] as List<UserModel>;
-          _dosenList = results[1] as List<UserModel>;
-          _relasiList = results[2] as List<Map<String, dynamic>>;
-          _isLoadingSetup = false;
-          _isLoadingRelasi = false;
+          _dosenList = dosenList;
+          _allMahasiswaList = mahasiswaList;
+          _dosenMahasiswaMap = map;
+          _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoadingSetup = false;
-          _isLoadingRelasi = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// Menyimpan relasi dosen pembimbing ke Supabase
-  Future<void> _savePembimbing() async {
-    if (_selectedMahasiswa == null || _selectedDosen == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pilih mahasiswa dan dosen terlebih dahulu!'),
-          backgroundColor: Colors.orange,
+  /// Dialog untuk mengubah dosen pembimbing dari seorang mahasiswa
+  void _showChangePembimbingDialog(UserModel mahasiswa, UserModel currentDosen) {
+    final primaryColor = Theme.of(context).primaryColor;
+    UserModel? selectedDosen = currentDosen;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            'Ubah Dosen Pembimbing',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Mahasiswa: ${mahasiswa.nama}',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('NIM: ${mahasiswa.nimNip}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 16),
+              const Text('Pilih Dosen Pembimbing Baru:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<UserModel>(
+                    value: _dosenList.any((d) => d.id == selectedDosen?.id)
+                        ? _dosenList.firstWhere((d) => d.id == selectedDosen?.id)
+                        : null,
+                    isExpanded: true,
+                    hint: const Text('Pilih Dosen'),
+                    items: _dosenList
+                        .map((d) => DropdownMenuItem(
+                              value: d,
+                              child: Text(d.nama),
+                            ))
+                        .toList(),
+                    onChanged: (val) {
+                      setDialogState(() {
+                        selectedDosen = val;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: isSaving || selectedDosen == null || selectedDosen?.id == currentDosen.id
+                  ? null
+                  : () async {
+                      setDialogState(() => isSaving = true);
+                      final success = await _service.setDosenPembimbing(
+                        mahasiswa.id!,
+                        selectedDosen!.id!,
+                      );
+                      if (ctx.mounted) Navigator.pop(ctx);
+
+                      if (success) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Dosen pembimbing berhasil diubah!'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                        _loadData();
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Gagal mengubah dosen pembimbing.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Simpan', style: TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
-      );
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
-
-    final success = await _service.setDosenPembimbing(
-      _selectedMahasiswa!.id!,
-      _selectedDosen!.id!,
+      ),
     );
+  }
 
-    if (mounted) {
-      setState(() {
-        _isSubmitting = false;
-        if (success) {
-          _selectedMahasiswa = null;
-          _selectedDosen = null;
-        }
-      });
+  /// Dialog untuk menentukan dosen pembimbing mahasiswa baru
+  void _showNewPembimbingDialog() {
+    final primaryColor = Theme.of(context).primaryColor;
+    UserModel? selectedMahasiswa;
+    UserModel? selectedDosen;
+    bool isSaving = false;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success
-              ? 'Dosen pembimbing berhasil ditetapkan!'
-              : 'Gagal menyimpan. Coba lagi.'),
-          backgroundColor: success ? Colors.green : Colors.red,
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            'Tentukan Pembimbing Baru',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Pilih Mahasiswa:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<UserModel>(
+                    value: selectedMahasiswa,
+                    isExpanded: true,
+                    hint: const Text('Pilih Mahasiswa'),
+                    items: _allMahasiswaList
+                        .map((m) => DropdownMenuItem(
+                              value: m,
+                              child: Text('${m.nama} (${m.nimNip})'),
+                            ))
+                        .toList(),
+                    onChanged: (val) {
+                      setDialogState(() {
+                        selectedMahasiswa = val;
+                      });
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Pilih Dosen Pembimbing:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<UserModel>(
+                    value: selectedDosen,
+                    isExpanded: true,
+                    hint: const Text('Pilih Dosen'),
+                    items: _dosenList
+                        .map((d) => DropdownMenuItem(
+                              value: d,
+                              child: Text(d.nama),
+                            ))
+                        .toList(),
+                    onChanged: (val) {
+                      setDialogState(() {
+                        selectedDosen = val;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: isSaving || selectedMahasiswa == null || selectedDosen == null
+                  ? null
+                  : () async {
+                      setDialogState(() => isSaving = true);
+                      final success = await _service.setDosenPembimbing(
+                        selectedMahasiswa!.id!,
+                        selectedDosen!.id!,
+                      );
+                      if (ctx.mounted) Navigator.pop(ctx);
+
+                      if (success) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Dosen pembimbing berhasil ditetapkan!'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                        _loadData();
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Gagal menetapkan pembimbing.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Simpan', style: TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
-      );
-
-      if (success) {
-        _loadData(); // Refresh relasi list
-        _tabController.animateTo(1); // Pindah ke tab daftar relasi
-      }
-    }
+      ),
+    );
   }
 
   @override
@@ -132,7 +336,7 @@ class _AturPembimbingScreenState extends State<AturPembimbingScreen>
       backgroundColor: const Color(0xFFF4F7FB),
       appBar: AppBar(
         title: const Text(
-          'Atur Dosen Pembimbing',
+          'Daftar Dosen Pembimbing',
           style: TextStyle(fontWeight: FontWeight.bold, color: textDark),
         ),
         backgroundColor: Colors.white,
@@ -141,354 +345,122 @@ class _AturPembimbingScreenState extends State<AturPembimbingScreen>
           IconButton(
             icon: Icon(Icons.refresh_rounded, color: primaryColor),
             onPressed: _loadData,
+            tooltip: 'Refresh',
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: primaryColor,
-          unselectedLabelColor: textGrey,
-          indicatorColor: primaryColor,
-          tabs: const [
-            Tab(icon: Icon(Icons.add_circle_outline, size: 18), text: 'Atur Baru'),
-            Tab(icon: Icon(Icons.list_alt_outlined, size: 18), text: 'Daftar Relasi'),
-          ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showNewPembimbingDialog,
+        backgroundColor: primaryColor,
+        icon: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
+        label: const Text(
+          'Tentukan Pembimbing',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // ===== TAB 1: ATUR PEMBIMBING BARU =====
-          _buildAturTab(primaryColor, textDark, textGrey),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _dosenList.isEmpty
+              ? const Center(
+                  child: Text('Belum ada data dosen.', style: TextStyle(color: textGrey)),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+                    itemCount: _dosenList.length,
+                    itemBuilder: (context, index) {
+                      final dosen = _dosenList[index];
+                      final mahasiswaBimbingan = _dosenMahasiswaMap[dosen.id!] ?? [];
 
-          // ===== TAB 2: DAFTAR RELASI =====
-          _buildRelasiTab(primaryColor, textDark, textGrey),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAturTab(Color primaryColor, Color textDark, Color textGrey) {
-    if (_isLoadingSetup) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Info card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: primaryColor.withOpacity(0.2)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline_rounded, color: primaryColor, size: 20),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Pilih mahasiswa dan dosen, lalu simpan untuk menetapkan atau mengubah dosen pembimbing.',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF2D3142)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // ===== PILIH MAHASISWA =====
-          const Text(
-            'Pilih Mahasiswa',
-            style: TextStyle(
-                fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)
-              ],
-            ),
-            child: DropdownButtonFormField<UserModel>(
-              value: _selectedMahasiswa,
-              isExpanded: true,
-              decoration: InputDecoration(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                prefixIcon: const Icon(Icons.person_outline),
-                hintText: 'Pilih mahasiswa...',
-              ),
-              items: _mahasiswaList
-                  .map((m) => DropdownMenuItem(
-                        value: m,
-                        child: Text('${m.nama} (${m.nimNip})',
-                            overflow: TextOverflow.ellipsis),
-                      ))
-                  .toList(),
-              onChanged: (val) => setState(() => _selectedMahasiswa = val),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Panah
-          Center(
-            child: Icon(Icons.arrow_downward_rounded,
-                color: primaryColor, size: 28),
-          ),
-          const SizedBox(height: 12),
-
-          // ===== PILIH DOSEN =====
-          const Text(
-            'Pilih Dosen Pembimbing',
-            style: TextStyle(
-                fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)
-              ],
-            ),
-            child: DropdownButtonFormField<UserModel>(
-              value: _selectedDosen,
-              isExpanded: true,
-              decoration: InputDecoration(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                prefixIcon: const Icon(Icons.school_outlined),
-                hintText: 'Pilih dosen...',
-              ),
-              items: _dosenList
-                  .map((d) => DropdownMenuItem(
-                        value: d,
-                        child: Text(
-                          '${d.nama}${d.nidn != null ? " (${d.nidn})" : ""}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ))
-                  .toList(),
-              onChanged: (val) => setState(() => _selectedDosen = val),
-            ),
-          ),
-          const SizedBox(height: 28),
-
-          // Preview pilihan
-          if (_selectedMahasiswa != null && _selectedDosen != null) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.green.withOpacity(0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Ringkasan Penetapan:',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.green)),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    const Icon(Icons.person, size: 16, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    Text(_selectedMahasiswa!.nama,
-                        style: const TextStyle(fontSize: 13)),
-                  ]),
-                  const SizedBox(height: 4),
-                  const Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    child: Icon(Icons.arrow_downward, size: 16, color: Colors.green),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(children: [
-                    const Icon(Icons.school, size: 16, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    Text(_selectedDosen!.nama,
-                        style: const TextStyle(fontSize: 13)),
-                  ]),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
-
-          // Tombol simpan
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton.icon(
-              onPressed: _isSubmitting ? null : _savePembimbing,
-              icon: _isSubmitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                  : const Icon(Icons.save_rounded, color: Colors.white),
-              label: Text(
-                _isSubmitting ? 'Menyimpan...' : 'Simpan Penetapan',
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                elevation: 2,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRelasiTab(Color primaryColor, Color textDark, Color textGrey) {
-    if (_isLoadingRelasi) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_relasiList.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.people_outline_rounded, size: 72, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            const Text('Belum ada relasi dosen pembimbing.',
-                style: TextStyle(color: Color(0xFF9098B1), fontSize: 14)),
-            const SizedBox(height: 8),
-            const Text('Gunakan tab "Atur Baru" untuk menetapkan.',
-                style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _relasiList.length,
-        itemBuilder: (context, index) {
-          final item = _relasiList[index];
-          final mahasiswaData = item['mahasiswa'];
-          final dosenData = item['dosen'];
-
-          final namaMahasiswa = mahasiswaData?['nama'] ?? 'Mahasiswa';
-          final nimMahasiswa = mahasiswaData?['nim_nip'] ?? '-';
-          final namaDosen = dosenData?['nama'] ?? 'Dosen';
-          final nidnDosen = dosenData?['nidn'] ?? '-';
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3))
-              ],
-            ),
-            child: Row(
-              children: [
-                // Mahasiswa icon
-                CircleAvatar(
-                  backgroundColor: primaryColor.withOpacity(0.1),
-                  child: Text(
-                    namaMahasiswa.isNotEmpty ? namaMahasiswa[0] : 'M',
-                    style: TextStyle(
-                        color: primaryColor, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(namaMahasiswa,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: Color(0xFF2D3142))),
-                      Text('NIM: $nimMahasiswa',
-                          style: const TextStyle(
-                              fontSize: 11, color: Color(0xFF9098B1))),
-                      const SizedBox(height: 4),
-                      // Panah → dosen
-                      Row(
-                        children: [
-                          const Icon(Icons.arrow_forward_rounded,
-                              size: 14, color: Colors.grey),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              namaDosen,
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: primaryColor),
-                              overflow: TextOverflow.ellipsis,
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
                             ),
+                          ],
+                        ),
+                        child: Theme(
+                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            leading: CircleAvatar(
+                              radius: 22,
+                              backgroundColor: primaryColor.withOpacity(0.1),
+                              child: Text(
+                                dosen.nama.isNotEmpty ? dosen.nama[0].toUpperCase() : 'D',
+                                style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            title: Text(
+                              dosen.nama,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textDark),
+                            ),
+                            subtitle: Text(
+                              'NIDN: ${dosen.nidn ?? "-"}\nBimbingan: ${mahasiswaBimbingan.length} Mahasiswa',
+                              style: const TextStyle(fontSize: 12, color: textGrey),
+                            ),
+                            childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            children: [
+                              const Divider(height: 1, color: Color(0xFFEEEEEE)),
+                              const SizedBox(height: 8),
+                              if (mahasiswaBimbingan.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 12),
+                                  child: Center(
+                                    child: Text(
+                                      'Belum ada mahasiswa bimbingan.',
+                                      style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                                    ),
+                                  ),
+                                )
+                              else
+                                ...mahasiswaBimbingan.map((m) => Container(
+                                      margin: const EdgeInsets.symmetric(vertical: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF9FAFC),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.person_outline, size: 18, color: Colors.grey),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  m.nama,
+                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textDark),
+                                                ),
+                                                Text(
+                                                  'NIM: ${m.nimNip}',
+                                                  style: const TextStyle(fontSize: 11, color: textGrey),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: Icon(Icons.swap_horiz_rounded, color: primaryColor, size: 20),
+                                            onPressed: () => _showChangePembimbingDialog(m, dosen),
+                                            tooltip: 'Ubah Pembimbing',
+                                          ),
+                                        ],
+                                      ),
+                                    )),
+                            ],
                           ),
-                        ],
-                      ),
-                      Text('NIDN: $nidnDosen',
-                          style: const TextStyle(
-                              fontSize: 11, color: Color(0xFF9098B1))),
-                    ],
+                        ),
+                      );
+                    },
                   ),
                 ),
-                // Tombol ubah
-                IconButton(
-                  icon: Icon(Icons.edit_outlined, color: primaryColor, size: 20),
-                  onPressed: () {
-                    // Pre-select mahasiswa dan dosen, lalu pindah ke tab atur baru
-                    final mahasiswaObj = _mahasiswaList.firstWhere(
-                      (m) => m.id == item['mahasiswa_id'],
-                      orElse: () => _mahasiswaList.first,
-                    );
-                    final dosenObj = _dosenList.firstWhere(
-                      (d) => d.id == item['dosen_id'],
-                      orElse: () => _dosenList.first,
-                    );
-                    setState(() {
-                      _selectedMahasiswa = mahasiswaObj;
-                      _selectedDosen = dosenObj;
-                    });
-                    _tabController.animateTo(0);
-                  },
-                  tooltip: 'Ubah Pembimbing',
-                ),
-              ],
-            ),
-          );
-        },
-      ),
     );
   }
 }

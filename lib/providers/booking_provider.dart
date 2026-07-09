@@ -121,20 +121,40 @@ class BookingProvider with ChangeNotifier {
         return 'Anda sudah melakukan booking untuk jadwal ini.';
       }
 
-      // Validasi 3: Cek apakah jadwal masih tersedia (status 'tersedia')
+      // Validasi 3: Cek apakah jadwal masih tersedia
       final jadwal = await _service.getJadwalById(booking.jadwalId);
       if (jadwal == null) {
         return 'Jadwal tidak ditemukan.';
       }
-      if (jadwal.status == 'penuh') {
-        return 'Jadwal ini sudah penuh.';
+
+      // Hitung total slot secara dinamis berdasarkan durasi (tiap 30 menit = 1 slot)
+      final startParts = jadwal.jamMulai.split(':');
+      final endParts = jadwal.jamSelesai.split(':');
+      final startMin = int.parse(startParts[0]) * 60 + int.parse(startParts[1]);
+      final endMin = int.parse(endParts[0]) * 60 + int.parse(endParts[1]);
+      final duration = endMin - startMin;
+      int totalSlots = 3;
+      if (duration > 0) {
+        totalSlots = (duration / 30).floor();
+        if (totalSlots <= 0) totalSlots = 1;
+      }
+
+      // Hitung booking aktif saat ini (bukan ditolak)
+      final activeBookings = await _service.getBookingByJadwalActive(booking.jadwalId);
+      if (activeBookings.length >= totalSlots) {
+        // Update status jadwal ke penuh di database
+        await _service.updateStatusJadwal(booking.jadwalId, 'penuh');
+        return 'Maaf, seluruh slot pada jadwal ini telah penuh.';
       }
 
       // Simpan booking ke database
       final newId = await _service.insertBooking(booking);
       if (newId > 0) {
-        // Update status jadwal menjadi 'penuh'
-        await _service.updateStatusJadwal(booking.jadwalId, 'penuh');
+        // Cek jika sekarang sudah penuh, update status jadwal menjadi 'penuh'
+        final updatedActive = await _service.getBookingByJadwalActive(booking.jadwalId);
+        if (updatedActive.length >= totalSlots) {
+          await _service.updateStatusJadwal(booking.jadwalId, 'penuh');
+        }
 
         // Tambahkan ke local list & invalidate cache
         _invalidateCache();

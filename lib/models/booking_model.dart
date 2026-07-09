@@ -12,6 +12,8 @@ class BookingModel {
   final String status; // 'pending', 'approved', 'rejected'
   final String? catatanStaf;
   final String createdAt;
+  final int? nomorAntrian;
+  final String? bookingTime;
 
   BookingModel({
     this.id,
@@ -27,6 +29,8 @@ class BookingModel {
     required this.status,
     this.catatanStaf,
     required this.createdAt,
+    this.nomorAntrian,
+    this.bookingTime,
   });
 
   factory BookingModel.fromMap(Map<String, dynamic> map) {
@@ -44,6 +48,8 @@ class BookingModel {
       status: map['status'] ?? 'pending',
       catatanStaf: map['catatan_staf'],
       createdAt: map['created_at'],
+      nomorAntrian: map['nomor_antrian'],
+      bookingTime: map['booking_time'] ?? map['created_at'],
     );
   }
 
@@ -74,6 +80,8 @@ class BookingModel {
     String? status,
     String? catatanStaf,
     String? createdAt,
+    int? nomorAntrian,
+    String? bookingTime,
   }) {
     return BookingModel(
       id: id ?? this.id,
@@ -89,11 +97,13 @@ class BookingModel {
       status: status ?? this.status,
       catatanStaf: catatanStaf ?? this.catatanStaf,
       createdAt: createdAt ?? this.createdAt,
+      nomorAntrian: nomorAntrian ?? this.nomorAntrian,
+      bookingTime: bookingTime ?? this.bookingTime,
     );
   }
 
   @override
   String toString() {
-    return 'BookingModel(id: $id, mahasiswaId: $mahasiswaId, jadwalId: $jadwalId, status: $status)';
+    return 'BookingModel(id: $id, mahasiswaId: $mahasiswaId, jadwalId: $jadwalId, status: $status, nomorAntrian: $nomorAntrian)';
   }
 }

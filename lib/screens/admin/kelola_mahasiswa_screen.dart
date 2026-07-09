@@ -69,16 +69,13 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
     });
   }
 
-  /// Dialog untuk menambah atau mengubah data mahasiswa
-  void _showMahasiswaDialog({UserModel? existing}) {
+  /// Dialog untuk menambah data mahasiswa
+  void _showMahasiswaDialog() {
     final primaryColor = Theme.of(context).primaryColor;
-    final namaCtrl = TextEditingController(text: existing?.nama ?? '');
-    final nimCtrl = TextEditingController(text: existing?.nimNip ?? '');
-    final emailCtrl = TextEditingController(text: existing?.email ?? '');
-    final jurusanCtrl = TextEditingController(text: existing?.jurusan ?? '');
-    final passwordCtrl = TextEditingController(text: existing?.password ?? '');
+    final namaCtrl = TextEditingController();
+    final nimCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
     bool isSubmitting = false;
-    final isEdit = existing != null;
 
     showDialog(
       context: context,
@@ -88,11 +85,10 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
             children: [
-              Icon(isEdit ? Icons.edit_outlined : Icons.person_add_outlined,
-                  color: primaryColor),
+              Icon(Icons.person_add_outlined, color: primaryColor),
               const SizedBox(width: 8),
-              Text(isEdit ? 'Edit Mahasiswa' : 'Tambah Mahasiswa',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text('Tambah Mahasiswa',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ],
           ),
           content: SingleChildScrollView(
@@ -101,18 +97,10 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
               children: [
                 _buildTextField(namaCtrl, 'Nama Lengkap', Icons.person_outline),
                 const SizedBox(height: 12),
-                _buildTextField(nimCtrl, 'NIM', Icons.badge_outlined,
-                    enabled: !isEdit),
+                _buildTextField(nimCtrl, 'NIM', Icons.badge_outlined),
                 const SizedBox(height: 12),
                 _buildTextField(emailCtrl, 'Email', Icons.email_outlined,
                     keyboardType: TextInputType.emailAddress),
-                const SizedBox(height: 12),
-                _buildTextField(jurusanCtrl, 'Jurusan/Program Studi',
-                    Icons.school_outlined),
-                const SizedBox(height: 12),
-                _buildTextField(passwordCtrl, 'Password',
-                    Icons.lock_outline,
-                    obscure: true),
               ],
             ),
           ),
@@ -126,40 +114,28 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
                   ? null
                   : () async {
                       if (namaCtrl.text.trim().isEmpty ||
-                          nimCtrl.text.trim().isEmpty) {
+                          nimCtrl.text.trim().isEmpty ||
+                          emailCtrl.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('Nama dan NIM wajib diisi!'),
+                              content: Text('Nama, NIM, dan Email wajib diisi!'),
                               backgroundColor: Colors.orange),
                         );
                         return;
                       }
                       setDialogState(() => isSubmitting = true);
 
-                      bool success = false;
-                      if (isEdit) {
-                        // Update mahasiswa
-                        final updated = existing!.copyWith(
-                          nama: namaCtrl.text.trim(),
-                          jurusan: jurusanCtrl.text.trim(),
-                        );
-                        await _service.updateUser(updated);
-                        success = true;
-                      } else {
-                        // Tambah mahasiswa baru
-                        final newMahasiswa = UserModel(
-                          nama: namaCtrl.text.trim(),
-                          nimNip: nimCtrl.text.trim(),
-                          email: emailCtrl.text.trim(),
-                          password: passwordCtrl.text.trim().isEmpty
-                              ? '123456'
-                              : passwordCtrl.text.trim(),
-                          role: 'mahasiswa',
-                          jurusan: jurusanCtrl.text.trim(),
-                        );
-                        final id = await _service.insertUser(newMahasiswa);
-                        success = id > 0;
-                      }
+                      // Tambah mahasiswa baru
+                      final newMahasiswa = UserModel(
+                        nama: namaCtrl.text.trim(),
+                        nimNip: nimCtrl.text.trim(),
+                        email: emailCtrl.text.trim(),
+                        password: '123456',
+                        role: 'mahasiswa',
+                        jurusan: 'Teknik Informatika',
+                      );
+                      final id = await _service.insertUser(newMahasiswa);
+                      final success = id > 0;
 
                       if (!ctx.mounted) return;
                       Navigator.pop(ctx);
@@ -168,9 +144,7 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(success
-                              ? (isEdit
-                                  ? 'Data mahasiswa berhasil diubah!'
-                                  : 'Mahasiswa baru berhasil ditambahkan!')
+                              ? 'Mahasiswa baru berhasil ditambahkan!'
                               : 'Gagal menyimpan data.'),
                           backgroundColor: success ? Colors.green : Colors.red,
                         ),
@@ -187,8 +161,8 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
                       height: 16,
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2))
-                  : Text(isEdit ? 'Simpan Perubahan' : 'Tambah',
-                      style: const TextStyle(
+                  : const Text('Tambah',
+                      style: TextStyle(
                           color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
@@ -379,25 +353,11 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
                                       fontSize: 12, color: textGrey),
                                 ),
                                 isThreeLine: true,
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Edit
-                                    IconButton(
-                                      icon: Icon(Icons.edit_outlined,
-                                          color: primaryColor, size: 20),
-                                      onPressed: () =>
-                                          _showMahasiswaDialog(existing: m),
-                                      tooltip: 'Edit',
-                                    ),
-                                    // Hapus
-                                    IconButton(
-                                      icon: const Icon(Icons.delete_outline,
-                                          color: Colors.red, size: 20),
-                                      onPressed: () => _confirmDelete(m),
-                                      tooltip: 'Hapus',
-                                    ),
-                                  ],
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.red, size: 20),
+                                  onPressed: () => _confirmDelete(m),
+                                  tooltip: 'Hapus',
                                 ),
                               ),
                             );

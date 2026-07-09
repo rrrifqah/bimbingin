@@ -196,7 +196,30 @@ class SupabaseService {
       }, onConflict: 'mahasiswa_id');
       return true;
     } catch (e) {
-      return false;
+      try {
+        final existing = await _client
+            .from('progres_skripsi')
+            .select('id')
+            .eq('mahasiswa_id', mahasiswaId)
+            .maybeSingle();
+        if (existing != null) {
+          await _client.from('progres_skripsi').update({
+            'dosen_id': dosenId,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('mahasiswa_id', mahasiswaId);
+        } else {
+          await _client.from('progres_skripsi').insert({
+            'mahasiswa_id': mahasiswaId,
+            'dosen_id': dosenId,
+            'tahap': 'Judul',
+            'status': 'belum_mulai',
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
   }
 
@@ -397,6 +420,47 @@ class SupabaseService {
           .select()
           .order('created_at', ascending: false);
       return (response as List).map((m) => BookingModel.fromMap(m)).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Ambil booking aktif (bukan ditolak) untuk jadwal tertentu
+  Future<List<BookingModel>> getBookingByJadwalActive(int jadwalId) async {
+    try {
+      final response = await _client
+          .from('booking')
+          .select()
+          .eq('jadwal_id', jadwalId)
+          .neq('status', 'rejected')
+          .order('created_at', ascending: true);
+      return (response as List).map((m) => BookingModel.fromMap(m)).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Ambil semua jadwal dosen beserta nama dosennya (untuk monitoring)
+  Future<List<Map<String, dynamic>>> getMonitoringJadwal() async {
+    try {
+      final response = await _client
+          .from('jadwal_dosen')
+          .select('*, dosen:dosen_id(nama, nim_nip)')
+          .order('tanggal', ascending: true);
+      return (response as List).map((m) => Map<String, dynamic>.from(m)).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Ambil semua booking beserta data mahasiswa dan dosen (untuk monitoring)
+  Future<List<Map<String, dynamic>>> getMonitoringBookings() async {
+    try {
+      final response = await _client
+          .from('booking')
+          .select('*, mahasiswa:mahasiswa_id(nama, nim_nip), dosen:dosen_id(nama)')
+          .order('created_at', ascending: true);
+      return (response as List).map((m) => Map<String, dynamic>.from(m)).toList();
     } catch (e) {
       return [];
     }
@@ -696,37 +760,34 @@ class SupabaseService {
     }
   }
 
-  // === DOSEN PEMBIMBING MAHASISWA ===
-  /// Mengambil dosen_id pembimbing mahasiswa dari tabel progres_skripsi.
-  /// Digunakan untuk fitur booking agar mahasiswa hanya bisa booking ke dosennya sendiri.
-  Future<int?> getDosenPembimbingByMahasiswa(int mahasiswaId) async {
+  // ============================================================
+  // === KONSULTASI / RIWAYAT BIMBINGAN ===
+  // ============================================================
+
+  /// Ambil semua riwayat konsultasi milik mahasiswa (sebagai logbook)
+  Future<List<KonsultasiModel>> getKonsultasiByMahasiswa(int mahasiswaId) async {
     try {
       final response = await _client
-          .from('progres_skripsi')
-          .select('dosen_id')
+          .from('riwayat_konsultasi')
+          .select()
           .eq('mahasiswa_id', mahasiswaId)
-          .limit(1)
-          .maybeSingle();
-      if (response == null) return null;
-      return response['dosen_id'] as int?;
+          .order('tanggal', ascending: false);
+      return (response as List).map((m) => KonsultasiModel.fromMap(m)).toList();
     } catch (e) {
-      return null;
+      return [];
     }
   }
 
-  // === PROGRES DIKELOLA MAHASISWA ===
-  /// Menambah progres baru oleh mahasiswa
-  Future<int> insertProgresByMahasiswa(ProgresModel progres) async {
+  /// Insert riwayat konsultasi baru
+  Future<int> insertKonsultasi(KonsultasiModel konsultasi) async {
     try {
-      final response = await _client.from('progres_skripsi').insert({
-        'mahasiswa_id': progres.mahasiswaId,
-        'dosen_id': progres.dosenId,
-        'judul_skripsi': progres.judulSkripsi,
-        'tahap': progres.tahap,
-        'status': progres.status,
-        'catatan': progres.catatan,
-        'catatan_mahasiswa': progres.catatanMahasiswa,
-        'updated_at': DateTime.now().toIso8601String(),
+      final response = await _client.from('riwayat_konsultasi').insert({
+        'mahasiswa_id': konsultasi.mahasiswaId,
+        'dosen_id': konsultasi.dosenId,
+        'tanggal': konsultasi.tanggal,
+        'isi_konsultasi': konsultasi.isiKonsultasi,
+        'status': konsultasi.status,
+        'created_at': konsultasi.createdAt,
       }).select('id').single();
       return (response['id'] as int?) ?? 0;
     } catch (e) {
@@ -734,25 +795,24 @@ class SupabaseService {
     }
   }
 
-  /// Memperbarui progres oleh mahasiswa (judul, catatan, tahap)
-  Future<int> updateProgresByMahasiswa(ProgresModel progres) async {
+  /// Update riwayat konsultasi
+  Future<int> updateKonsultasi(KonsultasiModel konsultasi) async {
     try {
-      await _client.from('progres_skripsi').update({
-        'judul_skripsi': progres.judulSkripsi,
-        'tahap': progres.tahap,
-        'catatan_mahasiswa': progres.catatanMahasiswa,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', progres.id!);
+      await _client.from('riwayat_konsultasi').update({
+        'tanggal': konsultasi.tanggal,
+        'isi_konsultasi': konsultasi.isiKonsultasi,
+        'status': konsultasi.status,
+      }).eq('id', konsultasi.id!);
       return 1;
     } catch (e) {
       return 0;
     }
   }
 
-  /// Menghapus progres oleh mahasiswa
-  Future<int> deleteProgresByMahasiswa(int id) async {
+  /// Hapus riwayat konsultasi berdasarkan ID
+  Future<int> deleteKonsultasi(int id) async {
     try {
-      await _client.from('progres_skripsi').delete().eq('id', id);
+      await _client.from('riwayat_konsultasi').delete().eq('id', id);
       return 1;
     } catch (e) {
       return 0;
