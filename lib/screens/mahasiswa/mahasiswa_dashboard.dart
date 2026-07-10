@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../database/supabase_service.dart';
 import '../../models/user_model.dart';
+import '../../models/booking_model.dart';
 import 'dosen_detail_screen.dart';
+import 'mahasiswa_main.dart';
+import '../auth/login_screen.dart';
 
 /// Dashboard Mahasiswa — menampilkan daftar semua dosen yang dapat di-browse.
 /// Mahasiswa dapat mencari dosen, melihat detail, dan booking (jika pembimbing).
@@ -21,6 +25,11 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
   bool _isLoading = true;
   String _searchQuery = '';
   int? _dosenPembimbingId; // ID dosen pembimbing mahasiswa
+
+  // State untuk booking aktif
+  BookingModel? _activeBooking;
+  int? _activeBookingQueue;
+  String? _activeBookingTimeSlot;
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -47,21 +56,44 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
     try {
       final supabase = SupabaseService();
 
-      // Load paralel: daftar dosen dan dosen pembimbing
+      // Load paralel: daftar dosen, dosen pembimbing, dan booking aktif
       final results = await Future.wait([
         supabase.getAllDosenWithScheduleStatus(),
         supabase.getDosenPembimbingByMahasiswa(user.id!),
+        supabase.getActiveBookingForMahasiswa(user.id!),
       ]);
 
       final dosenList = results[0] as List<Map<String, dynamic>>;
       final dosenPembimbingId = results[1] as int?;
+      final activeBooking = results[2] as BookingModel?;
+
+      int? queueNum;
+      String? timeSlot;
+
+      if (activeBooking != null) {
+        // Ambil info antrean dan slot waktu
+        final activeList = await supabase.getBookingByJadwalActive(
+          activeBooking.jadwalId,
+        );
+        final index = activeList.indexWhere((b) => b.id == activeBooking.id);
+        if (index != -1) {
+          queueNum = index + 1;
+          timeSlot = _calculateJamBimbingan(
+            activeBooking.jamMulai ?? '',
+            index,
+          );
+        }
+      }
 
       if (mounted) {
         setState(() {
           _allDosen = dosenList;
           _dosenPembimbingId = dosenPembimbingId;
-          _filteredDosen = dosenList;
+          _activeBooking = activeBooking;
+          _activeBookingQueue = queueNum;
+          _activeBookingTimeSlot = timeSlot;
           _isLoading = false;
+          _onSearchChanged(_searchQuery); // Update filtered list
         });
       }
     } catch (e) {
@@ -69,14 +101,37 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
     }
   }
 
+  /// Menghitung jam bimbingan untuk urutan FCFS (30 menit per slot)
+  String _calculateJamBimbingan(String jamMulai, int index) {
+    try {
+      final parts = jamMulai.split(':');
+      final startMin = int.parse(parts[0]) * 60 + int.parse(parts[1]);
+      final slotMin = startMin + (index * 30);
+      final hours = (slotMin ~/ 60).toString().padLeft(2, '0');
+      final mins = (slotMin % 60).toString().padLeft(2, '0');
+
+      final endSlotMin = slotMin + 30;
+      final endHours = (endSlotMin ~/ 60).toString().padLeft(2, '0');
+      final endMins = (endSlotMin % 60).toString().padLeft(2, '0');
+
+      return "$hours:$mins - $endHours:$endMins";
+    } catch (_) {
+      return jamMulai;
+    }
+  }
+
   /// Filter dosen berdasarkan query pencarian
   void _onSearchChanged(String query) {
     setState(() {
       _searchQuery = query.toLowerCase();
+      // Filter out the booked lecturer from the list below so they are not displayed twice
+      final baseList = _allDosen
+          .where((d) => d['id'] != _activeBooking?.dosenId)
+          .toList();
       if (_searchQuery.isEmpty) {
-        _filteredDosen = _allDosen;
+        _filteredDosen = baseList;
       } else {
-        _filteredDosen = _allDosen.where((d) {
+        _filteredDosen = baseList.where((d) {
           final nama = (d['nama'] ?? '').toString().toLowerCase();
           final nidn = (d['nidn'] ?? '').toString().toLowerCase();
           final prodi = (d['prodi'] ?? '').toString().toLowerCase();
@@ -88,6 +143,17 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
         }).toList();
       }
     });
+  }
+
+  void _openActiveDosenDetail() {
+    if (_activeBooking == null) return;
+    final dosenMap = _allDosen.firstWhere(
+      (d) => d['id'] == _activeBooking!.dosenId,
+      orElse: () => {},
+    );
+    if (dosenMap.isNotEmpty) {
+      _openDosenDetail(dosenMap);
+    }
   }
 
   /// Buka halaman detail dosen
@@ -109,8 +175,6 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
     final primaryColor = Theme.of(context).primaryColor;
-    const Color textDark = Color(0xFF2D3142);
-    const Color textGrey = Color(0xFF9098B1);
 
     if (user == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -122,100 +186,37 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
         child: Column(
           children: [
             // ===== HEADER =====
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-              color: Colors.white,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Baris nama + icon logout
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Halo, ${user.nama.split(' ').first} 👋',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: textDark,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Temukan dosen dan jadwal bimbingan',
-                              style: const TextStyle(
-                                  fontSize: 13, color: textGrey),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Tombol refresh
-                      IconButton(
-                        onPressed: _loadData,
-                        icon: Icon(Icons.refresh_rounded, color: primaryColor),
-                        tooltip: 'Refresh',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
+            _buildHeader(context, user, primaryColor),
 
-                  // ===== SEARCH BAR =====
-                  TextField(
-                    controller: _searchController,
-                    onChanged: _onSearchChanged,
-                    decoration: InputDecoration(
-                      hintText: 'Cari dosen, NIDN, prodi, atau bidang keahlian...',
-                      hintStyle: const TextStyle(
-                          fontSize: 13, color: textGrey),
-                      prefixIcon: const Icon(Icons.search, color: textGrey),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, color: textGrey, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                _onSearchChanged('');
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: const Color(0xFFF4F7FB),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: primaryColor, width: 1.5),
-                      ),
-                    ),
-                  ),
-                ],
+            // ===== SEARCH BAR =====
+            _buildSearchBar(primaryColor),
+
+            // ===== REMINDER CARD (DI BAWAH SEARCH BAR) =====
+            if (_activeBooking != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: _buildReminderCard(primaryColor),
               ),
-            ),
 
             // ===== HASIL / DAFTAR DOSEN =====
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredDosen.isEmpty
-                      ? _buildEmptyState()
-                      : RefreshIndicator(
-                          onRefresh: _loadData,
-                          child: ListView.builder(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _filteredDosen.length,
-                            itemBuilder: (context, index) {
-                              return _buildDosenCard(
-                                  _filteredDosen[index], primaryColor);
-                            },
-                          ),
-                        ),
+                  ? _buildEmptyState()
+                  : RefreshIndicator(
+                      onRefresh: _loadData,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _filteredDosen.length,
+                        itemBuilder: (context, index) {
+                          return _buildDosenCard(
+                            _filteredDosen[index],
+                            primaryColor,
+                          );
+                        },
+                      ),
+                    ),
             ),
           ],
         ),
@@ -236,9 +237,10 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                 ? 'Belum ada data dosen.'
                 : 'Dosen "$_searchQuery" tidak ditemukan.',
             style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF9098B1)),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF9098B1),
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -258,11 +260,11 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: isPembimbing
-            ? Border.all(color: primaryColor.withOpacity(0.4), width: 1.5)
+            ? Border.all(color: primaryColor.withValues(alpha: 0.4), width: 1.5)
             : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -288,15 +290,22 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                       // Badge "Pembimbing Saya" jika ini dosen pembimbing
                       if (isPembimbing) ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
-                            color: primaryColor.withOpacity(0.1),
+                            color: primaryColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.verified_rounded, size: 12, color: primaryColor),
+                              Icon(
+                                Icons.verified_rounded,
+                                size: 12,
+                                color: primaryColor,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 'Pembimbing Saya',
@@ -328,7 +337,9 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                       // NIDN
                       if (dosen.nidn != null && dosen.nidn!.isNotEmpty)
                         _buildInfoChip(
-                            Icons.badge_outlined, 'NIDN: ${dosen.nidn}'),
+                          Icons.badge_outlined,
+                          'NIDN: ${dosen.nidn}',
+                        ),
 
                       // Program Studi
                       if (dosen.prodi != null && dosen.prodi!.isNotEmpty) ...[
@@ -340,10 +351,13 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                       ],
 
                       // Bidang Keahlian
-                      if (dosen.bidangKeahlian != null && dosen.bidangKeahlian!.isNotEmpty) ...[
+                      if (dosen.bidangKeahlian != null &&
+                          dosen.bidangKeahlian!.isNotEmpty) ...[
                         const SizedBox(height: 3),
                         _buildInfoChip(
-                            Icons.lightbulb_outlined, dosen.bidangKeahlian!),
+                          Icons.lightbulb_outlined,
+                          dosen.bidangKeahlian!,
+                        ),
                       ],
                     ],
                   ),
@@ -359,11 +373,14 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
               children: [
                 // Status jadwal
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: hasJadwal
-                        ? Colors.green.withOpacity(0.1)
-                        : Colors.grey.withOpacity(0.1),
+                        ? Colors.green.withValues(alpha: 0.1)
+                        : Colors.grey.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -390,19 +407,28 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
                 // Tombol Lihat Detail
                 ElevatedButton.icon(
                   onPressed: () => _openDosenDetail(data),
-                  icon: const Icon(Icons.info_outline, size: 15, color: Colors.white),
+                  icon: const Icon(
+                    Icons.info_outline,
+                    size: 15,
+                    color: Colors.white,
+                  ),
                   label: const Text(
                     'Lihat Detail',
                     style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     elevation: 0,
                   ),
                 ),
@@ -421,15 +447,18 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
       height: 58,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: primaryColor.withOpacity(0.1),
-        border: Border.all(color: primaryColor.withOpacity(0.2), width: 2),
+        color: primaryColor.withValues(alpha: 0.1),
+        border: Border.all(
+          color: primaryColor.withValues(alpha: 0.2),
+          width: 2,
+        ),
       ),
       child: ClipOval(
         child: dosen.foto != null && dosen.foto!.startsWith('http')
             ? Image.network(
                 dosen.foto!,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
+                errorBuilder: (context, error, stackTrace) =>
                     _buildInitialAvatar(dosen.nama, primaryColor),
               )
             : _buildInitialAvatar(dosen.nama, primaryColor),
@@ -465,6 +494,439 @@ class _MahasiswaDashboardState extends State<MahasiswaDashboard> {
           ),
         ),
       ],
+    );
+  }
+
+  // ===== REMINDER CARD WIDGETS =====
+
+  Widget _buildReminderCard(Color primaryColor) {
+    if (_activeBooking == null) return const SizedBox.shrink();
+
+    final b = _activeBooking!;
+    const Color greenColor = Color(0xFF22C55E);
+    const Color darkGreenColor = Color(0xFF15803D);
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [greenColor, darkGreenColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: greenColor.withValues(alpha: 0.35),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _openActiveDosenDetail,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header card reminder: Status + badge nomor antrean
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.verified_user_rounded,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Booking Aktif',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Antrean #${_activeBookingQueue ?? "-"}',
+                        style: const TextStyle(
+                          color: darkGreenColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Baris Info Dosen
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Foto Dosen (lebih besar)
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.15),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 2,
+                        ),
+                      ),
+                      child: ClipOval(
+                        child:
+                            b.fotoDosen != null &&
+                                b.fotoDosen!.startsWith('http')
+                            ? Image.network(
+                                b.fotoDosen!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    _buildReminderInitialAvatar(
+                                      b.namaDosen ?? '',
+                                    ),
+                              )
+                            : _buildReminderInitialAvatar(b.namaDosen ?? ''),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+
+                    // Detail Dosen & Booking
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            b.namaDosen ?? 'Dosen Pembimbing',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 8),
+                          // Tanggal
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.calendar_today_rounded,
+                                color: Colors.white70,
+                                size: 13,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _formatReminderDate(b.tanggal, b.createdAt),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          // Jam
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.access_time_rounded,
+                                color: Colors.white70,
+                                size: 13,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _activeBookingTimeSlot ?? b.jam ?? '',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReminderInitialAvatar(String nama) {
+    return Center(
+      child: Text(
+        nama.isNotEmpty ? nama[0].toUpperCase() : 'D',
+        style: const TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  String _formatReminderDate(String? tanggal, String createdAt) {
+    if (tanggal == null || tanggal.isEmpty) {
+      try {
+        final date = DateTime.parse(createdAt);
+        return DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(date);
+      } catch (_) {
+        return '-';
+      }
+    }
+    try {
+      final date = DateTime.parse(tanggal);
+      return DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(date);
+    } catch (_) {
+      return tanggal;
+    }
+  }
+
+  Widget _buildHeader(
+    BuildContext context,
+    UserModel user,
+    Color primaryColor,
+  ) {
+    final secondaryColor = Theme.of(context).colorScheme.secondary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [primaryColor, secondaryColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.2),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.4),
+                width: 1.5,
+              ),
+            ),
+            child: ClipOval(
+              child: user.foto != null && user.foto!.startsWith('http')
+                  ? Image.network(
+                      user.foto!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          _buildInitialAvatarHeader(user.nama),
+                    )
+                  : _buildInitialAvatarHeader(user.nama),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.nama,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'NIM: ${user.nimNip}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PopupMenuButton<String>(
+                icon: const Icon(
+                  Icons.settings_outlined,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                tooltip: 'Pengaturan',
+                onSelected: (val) async {
+                  if (val == 'profile') {
+                    final parentState = context
+                        .findAncestorStateOfType<MahasiswaMainState>();
+                    if (parentState != null) {
+                      parentState.setIndex(2);
+                    }
+                  } else if (val == 'logout') {
+                    await context.read<AuthProvider>().logout();
+                    if (context.mounted) {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (context) => const LoginScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    }
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'profile',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          size: 18,
+                          color: Colors.black87,
+                        ),
+                        SizedBox(width: 8),
+                        Text('Profil Saya', style: TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout, size: 18, color: Colors.redAccent),
+                        SizedBox(width: 8),
+                        Text(
+                          'Keluar',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInitialAvatarHeader(String nama) {
+    return Center(
+      child: Text(
+        nama.isNotEmpty ? nama[0].toUpperCase() : 'M',
+        style: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar(Color primaryColor) {
+    const Color textGrey = Color(0xFF9098B1);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: TextField(
+        controller: _searchController,
+        onChanged: _onSearchChanged,
+        decoration: InputDecoration(
+          hintText: 'Cari dosen, NIDN, prodi, atau bidang keahlian...',
+          hintStyle: const TextStyle(fontSize: 13, color: textGrey),
+          prefixIcon: const Icon(Icons.search, color: textGrey),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, color: textGrey, size: 18),
+                  onPressed: () {
+                    _searchController.clear();
+                    _onSearchChanged('');
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 12,
+            horizontal: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(color: primaryColor, width: 1.5),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(color: Colors.grey.shade200, width: 1),
+          ),
+        ),
+      ),
     );
   }
 }

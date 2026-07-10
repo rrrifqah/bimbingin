@@ -57,12 +57,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   leading: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
+                      color: primaryColor.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(Icons.photo_library_outlined, color: primaryColor),
+                    child: Icon(
+                      Icons.photo_library_outlined,
+                      color: primaryColor,
+                    ),
                   ),
-                  title: const Text('Pilih dari Galeri', style: TextStyle(fontWeight: FontWeight.w600)),
+                  title: const Text(
+                    'Pilih dari Galeri',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   subtitle: const Text('Pilih foto dari galeri perangkat'),
                   onTap: () {
                     Navigator.pop(ctx);
@@ -75,12 +81,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   leading: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
+                      color: Colors.green.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.camera_alt_outlined, color: Colors.green),
+                    child: const Icon(
+                      Icons.camera_alt_outlined,
+                      color: Colors.green,
+                    ),
                   ),
-                  title: const Text('Ambil Foto', style: TextStyle(fontWeight: FontWeight.w600)),
+                  title: const Text(
+                    'Ambil Foto',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   subtitle: const Text('Foto menggunakan kamera'),
                   onTap: () {
                     Navigator.pop(ctx);
@@ -94,12 +106,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     leading: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
+                        color: Colors.red.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.delete_outline, color: Colors.red),
+                      child: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.red,
+                      ),
                     ),
-                    title: const Text('Hapus Foto', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.red)),
+                    title: const Text(
+                      'Hapus Foto',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red,
+                      ),
+                    ),
                     onTap: () {
                       Navigator.pop(ctx);
                       _removePhoto();
@@ -128,22 +149,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (pickedFile != null && mounted) {
         setState(() => _isLoading = true);
-        
+
         final bytes = await pickedFile.readAsBytes();
         final base64Image = base64Encode(bytes);
-        
+
+        if (!mounted) return;
+
         final auth = context.read<AuthProvider>();
         final user = auth.currentUser;
-        
+
         if (user != null) {
           final updatedUser = user.copyWith(foto: base64Image);
           final success = await auth.updateProfile(updatedUser);
-          
+
           if (mounted) {
             setState(() => _isLoading = false);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(success ? 'Foto profil berhasil diperbarui!' : 'Gagal memperbarui foto profil'),
+                content: Text(
+                  success
+                      ? 'Foto profil berhasil diperbarui!'
+                      : 'Gagal memperbarui foto profil',
+                ),
                 backgroundColor: success ? Colors.green : Colors.red,
               ),
             );
@@ -155,7 +182,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gagal memilih foto: Izin ditolak atau format tidak didukung.'),
+            content: Text(
+              'Gagal memilih foto: Izin ditolak atau format tidak didukung.',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -166,10 +195,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Menghapus foto profil dari database
   Future<void> _removePhoto() async {
     setState(() => _isLoading = true);
-    
+
     final auth = context.read<AuthProvider>();
     final user = auth.currentUser;
-    
+
     if (user != null) {
       // Create a map to force null for foto, since copyWith ignores nulls in this implementation
       // Or we can manually set it in Supabase, but copyWith is fine if we adapt it or directly use a new object.
@@ -185,14 +214,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         jurusan: user.jurusan,
         foto: null, // explicitly null
       );
-      
+
       final success = await auth.updateProfile(updatedUser);
-      
+
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? 'Foto profil dihapus.' : 'Gagal menghapus foto.'),
+            content: Text(
+              success ? 'Foto profil dihapus.' : 'Gagal menghapus foto.',
+            ),
             backgroundColor: success ? Colors.orange : Colors.red,
           ),
         );
@@ -203,8 +234,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Menampilkan dialog edit profil (nama, jurusan)
   void _showEditProfileDialog(BuildContext context, UserModel user) {
     final primaryColor = Theme.of(context).primaryColor;
+    final isDosen = user.role == 'dosen';
+
     final namaCtrl = TextEditingController(text: user.nama);
+    final emailCtrl = TextEditingController(text: user.email);
     final jurusanCtrl = TextEditingController(text: user.jurusan);
+    final phoneCtrl = TextEditingController(text: user.phone ?? '');
+
+    // Field dosen
+    final nidnCtrl = TextEditingController(text: user.nidn ?? '');
+    final prodiCtrl = TextEditingController(text: user.prodi ?? '');
+    final bidangCtrl = TextEditingController(text: user.bidangKeahlian ?? '');
+
     bool isSubmitting = false;
 
     showDialog(
@@ -214,50 +255,124 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
               title: Row(
                 children: [
                   Icon(Icons.edit_outlined, color: primaryColor),
                   const SizedBox(width: 8),
-                  const Text('Edit Profil', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Edit Profil',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Field Nama
-                  TextField(
-                    controller: namaCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Nama Lengkap',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: primaryColor, width: 1.5),
+              content: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.9,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 8),
+                      // Field Nama
+                      TextField(
+                        controller: namaCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Nama Lengkap',
+                          prefixIcon: const Icon(Icons.person_outline),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Field Jurusan
-                  TextField(
-                    controller: jurusanCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Jurusan / Bagian',
-                      prefixIcon: const Icon(Icons.school_outlined),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: primaryColor, width: 1.5),
+                      const SizedBox(height: 16),
+                      // Field Email
+                      TextField(
+                        controller: emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: const Icon(Icons.email_outlined),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      // Field Jurusan
+                      TextField(
+                        controller: jurusanCtrl,
+                        decoration: InputDecoration(
+                          labelText: isDosen ? 'Fakultas / Bagian' : 'Jurusan',
+                          prefixIcon: const Icon(Icons.school_outlined),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Field No. HP
+                      TextField(
+                        controller: phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: 'Nomor HP',
+                          prefixIcon: const Icon(Icons.phone_outlined),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      if (isDosen) ...[
+                        const SizedBox(height: 16),
+                        // Field NIDN
+                        TextField(
+                          controller: nidnCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'NIDN',
+                            prefixIcon: const Icon(Icons.badge_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Field Prodi
+                        TextField(
+                          controller: prodiCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Program Studi',
+                            prefixIcon: const Icon(Icons.domain_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Field Bidang Keahlian
+                        TextField(
+                          controller: bidangCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Bidang Keahlian',
+                            prefixIcon: const Icon(Icons.psychology_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
               ),
               actions: [
                 TextButton(
                   onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
-                  child: const Text('Batal', style: TextStyle(color: Color(0xFF9098B1))),
+                  child: const Text(
+                    'Batal',
+                    style: TextStyle(color: Color(0xFF9098B1)),
+                  ),
                 ),
                 ElevatedButton(
                   onPressed: isSubmitting
@@ -276,28 +391,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           // Update user data via AuthProvider
                           final updatedUser = user.copyWith(
                             nama: namaCtrl.text.trim(),
+                            email: emailCtrl.text.trim(),
                             jurusan: jurusanCtrl.text.trim(),
+                            phone: phoneCtrl.text.trim(),
+                            nidn: isDosen ? nidnCtrl.text.trim() : user.nidn,
+                            prodi: isDosen ? prodiCtrl.text.trim() : user.prodi,
+                            bidangKeahlian: isDosen
+                                ? bidangCtrl.text.trim()
+                                : user.bidangKeahlian,
                           );
-                          
-                          final success = await context.read<AuthProvider>().updateProfile(updatedUser);
-                          
+
+                          final success = await context
+                              .read<AuthProvider>()
+                              .updateProfile(updatedUser);
+
                           if (!ctx.mounted) return;
                           Navigator.pop(ctx);
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(success ? 'Profil berhasil diperbarui!' : 'Gagal memperbarui profil'),
-                              backgroundColor: success ? Colors.green : Colors.red,
+                              content: Text(
+                                success
+                                    ? 'Profil berhasil diperbarui!'
+                                    : 'Gagal memperbarui profil',
+                              ),
+                              backgroundColor: success
+                                  ? Colors.green
+                                  : Colors.red,
                             ),
                           );
                         },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                   child: isSubmitting
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('Simpan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Simpan',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ],
             );
@@ -313,20 +458,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Konfirmasi Logout', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Konfirmasi Logout',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: const Text('Apakah Anda yakin ingin keluar dari aplikasi?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal', style: TextStyle(color: Color(0xFF9098B1))),
+            child: const Text(
+              'Batal',
+              style: TextStyle(color: Color(0xFF9098B1)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child: const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Logout',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -347,30 +506,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Helper: mendapatkan label role dalam Bahasa Indonesia
   String _getRoleLabel(String role) {
     switch (role) {
-      case 'mahasiswa': return 'Mahasiswa';
-      case 'dosen': return 'Dosen Pembimbing';
-      case 'staf': return 'Staf / Admin';
-      default: return role;
+      case 'mahasiswa':
+        return 'Mahasiswa';
+      case 'dosen':
+        return 'Dosen Pembimbing';
+      case 'staf':
+        return 'Staf / Admin';
+      default:
+        return role;
     }
   }
 
   /// Helper: mendapatkan warna badge role
   Color _getRoleColor(String role) {
     switch (role) {
-      case 'mahasiswa': return const Color(0xFF3B4FE4);
-      case 'dosen': return const Color(0xFF22C55E);
-      case 'staf': return const Color(0xFFF59E0B);
-      default: return Colors.grey;
+      case 'mahasiswa':
+        return const Color(0xFF39A846);
+      case 'dosen':
+        return const Color(0xFF22C55E);
+      case 'staf':
+        return const Color(0xFFF59E0B);
+      default:
+        return Colors.grey;
     }
   }
 
   /// Helper: mendapatkan ikon role
   IconData _getRoleIcon(String role) {
     switch (role) {
-      case 'mahasiswa': return Icons.school_rounded;
-      case 'dosen': return Icons.person_rounded;
-      case 'staf': return Icons.admin_panel_settings_rounded;
-      default: return Icons.person;
+      case 'mahasiswa':
+        return Icons.school_rounded;
+      case 'dosen':
+        return Icons.person_rounded;
+      case 'staf':
+        return Icons.admin_panel_settings_rounded;
+      default:
+        return Icons.person;
     }
   }
 
@@ -389,15 +560,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final roleColor = _getRoleColor(user.role);
     final roleLabel = _getRoleLabel(user.role);
     final roleIcon = _getRoleIcon(user.role);
-    
+
     // Check if foto is a valid base64 image string
     ImageProvider? imageProvider;
     if (user.foto != null && user.foto!.isNotEmpty) {
-        try {
-            imageProvider = MemoryImage(base64Decode(user.foto!));
-        } catch (_) {
-            // Invalid base64, keep it null
-        }
+      try {
+        imageProvider = MemoryImage(base64Decode(user.foto!));
+      } catch (_) {
+        // Invalid base64, keep it null
+      }
     }
 
     return Scaffold(
@@ -427,10 +598,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         height: 110,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(color: primaryColor.withOpacity(0.3), width: 3),
+                          border: Border.all(
+                            color: primaryColor.withValues(alpha: 0.3),
+                            width: 3,
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: primaryColor.withOpacity(0.15),
+                              color: primaryColor.withValues(alpha: 0.15),
                               blurRadius: 16,
                               offset: const Offset(0, 6),
                             ),
@@ -438,7 +612,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         child: ClipOval(
                           child: imageProvider != null
-                              ? Image(image: imageProvider, fit: BoxFit.cover, errorBuilder: (_,__,___) => _buildDefaultAvatar(user.nama, primaryColor))
+                              ? Image(
+                                  image: imageProvider,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      _buildDefaultAvatar(
+                                        user.nama,
+                                        primaryColor,
+                                      ),
+                                )
                               : _buildDefaultAvatar(user.nama, primaryColor),
                         ),
                       ),
@@ -455,10 +637,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
                               boxShadow: [
-                                BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 8),
+                                BoxShadow(
+                                  color: primaryColor.withValues(alpha: 0.3),
+                                  blurRadius: 8,
+                                ),
                               ],
                             ),
-                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                           ),
                         ),
                       ),
@@ -470,25 +659,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 // Nama pengguna
                 Text(
                   user.nama,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textDark),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: textDark,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
 
                 // Badge Role
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    color: roleColor.withOpacity(0.12),
+                    color: roleColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: roleColor.withOpacity(0.3)),
+                    border: Border.all(color: roleColor.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(roleIcon, color: roleColor, size: 16),
                       const SizedBox(width: 6),
-                      Text(roleLabel, style: TextStyle(color: roleColor, fontWeight: FontWeight.bold, fontSize: 13)),
+                      Text(
+                        roleLabel,
+                        style: TextStyle(
+                          color: roleColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -502,7 +705,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4)),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
                     ],
                   ),
                   child: Column(
@@ -510,10 +717,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       // NIM/NIP
                       _buildInfoRow(
                         icon: Icons.badge_outlined,
-                        label: 'NIM / NIP',
+                        label: user.role == 'dosen' ? 'NIP' : 'NIM',
                         value: user.nimNip,
                         primaryColor: primaryColor,
                       ),
+                      if (user.role == 'dosen') ...[
+                        const Divider(height: 24),
+                        _buildInfoRow(
+                          icon: Icons.badge_outlined,
+                          label: 'NIDN',
+                          value: user.nidn ?? '-',
+                          primaryColor: primaryColor,
+                        ),
+                      ],
                       const Divider(height: 24),
                       // Email
                       _buildInfoRow(
@@ -526,8 +742,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       // Jurusan
                       _buildInfoRow(
                         icon: Icons.school_outlined,
-                        label: 'Jurusan / Bagian',
+                        label: user.role == 'dosen'
+                            ? 'Fakultas / Bagian'
+                            : 'Jurusan',
                         value: user.jurusan,
+                        primaryColor: primaryColor,
+                      ),
+                      if (user.role == 'dosen') ...[
+                        const Divider(height: 24),
+                        _buildInfoRow(
+                          icon: Icons.domain_outlined,
+                          label: 'Program Studi',
+                          value: user.prodi ?? '-',
+                          primaryColor: primaryColor,
+                        ),
+                        const Divider(height: 24),
+                        _buildInfoRow(
+                          icon: Icons.psychology_outlined,
+                          label: 'Bidang Keahlian',
+                          value: user.bidangKeahlian ?? '-',
+                          primaryColor: primaryColor,
+                        ),
+                      ],
+                      const Divider(height: 24),
+                      // No HP
+                      _buildInfoRow(
+                        icon: Icons.phone_outlined,
+                        label: 'Nomor HP',
+                        value: user.phone ?? '-',
                         primaryColor: primaryColor,
                       ),
                       const Divider(height: 24),
@@ -550,16 +792,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   height: 52,
                   child: ElevatedButton.icon(
                     onPressed: () => _showEditProfileDialog(context, user),
-                    icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 18),
+                    icon: const Icon(
+                      Icons.edit_outlined,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                     label: const Text(
                       'Edit Profil',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryColor,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       elevation: 2,
-                      shadowColor: primaryColor.withOpacity(0.3),
+                      shadowColor: primaryColor.withValues(alpha: 0.3),
                     ),
                   ),
                 ),
@@ -571,30 +823,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   height: 52,
                   child: OutlinedButton.icon(
                     onPressed: _doLogout,
-                    icon: const Icon(Icons.logout_rounded, color: Colors.red, size: 18),
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      color: Colors.red,
+                      size: 18,
+                    ),
                     label: const Text(
                       'Logout',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.red),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
                     ),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.red),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 24),
 
                 // Versi app
-                const Text('Bimbingin v1.0.0', style: TextStyle(fontSize: 11, color: textGrey)),
+                const Text(
+                  'Bimbingin v1.0.0',
+                  style: TextStyle(fontSize: 11, color: textGrey),
+                ),
               ],
             ),
           ),
-          
+
           if (_isLoading)
             Container(
-                color: Colors.black.withOpacity(0.3),
-                child: const Center(child: CircularProgressIndicator())
-            )
+              color: Colors.black.withValues(alpha: 0.3),
+              child: const Center(child: CircularProgressIndicator()),
+            ),
         ],
       ),
     );
@@ -613,7 +878,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: primaryColor.withOpacity(0.08),
+            color: primaryColor.withValues(alpha: 0.08),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: primaryColor, size: 18),
@@ -625,12 +890,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               Text(
                 label,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF9098B1), fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF9098B1),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: valueColor ?? const Color(0xFF2D3142)),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: valueColor ?? const Color(0xFF2D3142),
+                ),
               ),
             ],
           ),
@@ -642,11 +915,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Widget avatar default (inisial nama)
   Widget _buildDefaultAvatar(String nama, Color primaryColor) {
     return Container(
-      color: primaryColor.withOpacity(0.15),
+      color: primaryColor.withValues(alpha: 0.15),
       child: Center(
         child: Text(
           nama.isNotEmpty ? nama[0].toUpperCase() : 'U',
-          style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: primaryColor),
+          style: TextStyle(
+            fontSize: 42,
+            fontWeight: FontWeight.bold,
+            color: primaryColor,
+          ),
         ),
       ),
     );

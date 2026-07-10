@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
 import '../../database/supabase_service.dart';
 import '../../models/user_model.dart';
 
@@ -82,13 +80,17 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: Row(
             children: [
               Icon(Icons.person_add_outlined, color: primaryColor),
               const SizedBox(width: 8),
-              const Text('Tambah Mahasiswa',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text(
+                'Tambah Mahasiswa',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
             ],
           ),
           content: SingleChildScrollView(
@@ -99,8 +101,12 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
                 const SizedBox(height: 12),
                 _buildTextField(nimCtrl, 'NIM', Icons.badge_outlined),
                 const SizedBox(height: 12),
-                _buildTextField(emailCtrl, 'Email', Icons.email_outlined,
-                    keyboardType: TextInputType.emailAddress),
+                _buildTextField(
+                  emailCtrl,
+                  'Email',
+                  Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                ),
               ],
             ),
           ),
@@ -118,8 +124,9 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
                           emailCtrl.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('Nama, NIM, dan Email wajib diisi!'),
-                              backgroundColor: Colors.orange),
+                            content: Text('Nama, NIM, dan Email wajib diisi!'),
+                            backgroundColor: Colors.orange,
+                          ),
                         );
                         return;
                       }
@@ -143,9 +150,11 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(success
-                              ? 'Mahasiswa baru berhasil ditambahkan!'
-                              : 'Gagal menyimpan data.'),
+                          content: Text(
+                            success
+                                ? 'Mahasiswa baru berhasil ditambahkan!'
+                                : 'Gagal menyimpan data.',
+                          ),
                           backgroundColor: success ? Colors.green : Colors.red,
                         ),
                       );
@@ -153,17 +162,26 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               child: isSubmitting
                   ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                  : const Text('Tambah',
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'Tambah',
                       style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold)),
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -177,19 +195,23 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Hapus Mahasiswa',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Hapus Mahasiswa',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: Text(
-            'Hapus ${mahasiswa.nama}? Tindakan ini tidak dapat dibatalkan.'),
+          'Hapus ${mahasiswa.nama}? Tindakan ini tidak dapat dibatalkan.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Batal')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
           ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Hapus',
-                  style: TextStyle(color: Colors.white))),
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );
@@ -200,18 +222,22 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('${mahasiswa.nama} berhasil dihapus.'),
-              backgroundColor: Colors.orange),
+            content: Text('${mahasiswa.nama} berhasil dihapus.'),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
     }
   }
 
   Widget _buildTextField(
-      TextEditingController ctrl, String label, IconData icon,
-      {bool obscure = false,
-      bool enabled = true,
-      TextInputType keyboardType = TextInputType.text}) {
+    TextEditingController ctrl,
+    String label,
+    IconData icon, {
+    bool obscure = false,
+    bool enabled = true,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
     final primaryColor = Theme.of(context).primaryColor;
     return TextField(
       controller: ctrl,
@@ -257,12 +283,17 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showMahasiswaDialog(),
-        backgroundColor: primaryColor,
-        icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-        label: const Text('Tambah Mahasiswa',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 70.0),
+        child: FloatingActionButton.extended(
+          onPressed: () => _showMahasiswaDialog(),
+          backgroundColor: primaryColor,
+          icon: const Icon(Icons.person_add_rounded, color: Colors.white),
+          label: const Text(
+            'Tambah Mahasiswa',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ),
       ),
       body: Column(
         children: [
@@ -296,7 +327,10 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
                 Text(
                   '${_filteredList.length} mahasiswa',
                   style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600, color: textGrey),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: textGrey,
+                  ),
                 ),
               ],
             ),
@@ -307,63 +341,80 @@ class _KelolaMahasiswaScreenState extends State<KelolaMahasiswaScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredList.isEmpty
-                    ? const Center(
-                        child: Text('Belum ada data mahasiswa.',
-                            style: TextStyle(color: textGrey)))
-                    : RefreshIndicator(
-                        onRefresh: _loadData,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                          itemCount: _filteredList.length,
-                          itemBuilder: (context, index) {
-                            final m = _filteredList[index];
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.04),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
+                ? const Center(
+                    child: Text(
+                      'Belum ada data mahasiswa.',
+                      style: TextStyle(color: textGrey),
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadData,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                      itemCount: _filteredList.length,
+                      itemBuilder: (context, index) {
+                        final m = _filteredList[index];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
                               ),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
-                                leading: CircleAvatar(
-                                  backgroundColor: primaryColor.withOpacity(0.1),
-                                  child: Text(
-                                    m.nama.isNotEmpty ? m.nama[0].toUpperCase() : 'M',
-                                    style: TextStyle(
-                                        color: primaryColor,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                title: Text(
-                                  m.nama,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold, fontSize: 14),
-                                ),
-                                subtitle: Text(
-                                  'NIM: ${m.nimNip}\n${m.jurusan}',
-                                  style: const TextStyle(
-                                      fontSize: 12, color: textGrey),
-                                ),
-                                isThreeLine: true,
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Colors.red, size: 20),
-                                  onPressed: () => _confirmDelete(m),
-                                  tooltip: 'Hapus',
+                            ],
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            leading: CircleAvatar(
+                              backgroundColor: primaryColor.withValues(
+                                alpha: 0.1,
+                              ),
+                              child: Text(
+                                m.nama.isNotEmpty
+                                    ? m.nama[0].toUpperCase()
+                                    : 'M',
+                                style: TextStyle(
+                                  color: primaryColor,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                      ),
+                            ),
+                            title: Text(
+                              m.nama,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'NIM: ${m.nimNip}\n${m.jurusan}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: textGrey,
+                              ),
+                            ),
+                            isThreeLine: true,
+                            trailing: IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                              onPressed: () => _confirmDelete(m),
+                              tooltip: 'Hapus',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
           ),
         ],
       ),

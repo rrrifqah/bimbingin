@@ -27,11 +27,11 @@ class Student {
     List<ThesisProgress>? progress,
   }) {
     return Student(
-      id: this.id,
-      name: this.name,
-      department: this.department,
-      thesisTitle: this.thesisTitle,
-      advisorId: this.advisorId,
+      id: id,
+      name: name,
+      department: department,
+      thesisTitle: thesisTitle,
+      advisorId: advisorId,
       daysWaiting: daysWaiting ?? this.daysWaiting,
       daysRemaining: daysRemaining ?? this.daysRemaining,
       progress: progress ?? this.progress,

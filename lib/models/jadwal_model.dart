@@ -3,24 +3,28 @@ class JadwalModel {
   final int dosenId;
   final String? namaDosen;
   final String hari;
-  final String tanggal;
+  final String? tanggal;
   final String jamMulai;
   final String jamSelesai;
   final String status; // 'tersedia', 'penuh'
-  final String lokasi;
+  final String? lokasi;
   final String? keterangan;
+  final int kuota;
+  final int sisaSlot;
 
   JadwalModel({
     this.id,
     required this.dosenId,
     this.namaDosen,
     required this.hari,
-    required this.tanggal,
+    this.tanggal,
     required this.jamMulai,
     required this.jamSelesai,
     required this.status,
-    required this.lokasi,
+    this.lokasi,
     this.keterangan,
+    required this.kuota,
+    required this.sisaSlot,
   });
 
   factory JadwalModel.fromMap(Map<String, dynamic> map) {
@@ -35,6 +39,8 @@ class JadwalModel {
       status: map['status'] ?? 'tersedia',
       lokasi: map['lokasi'],
       keterangan: map['keterangan'],
+      kuota: map['kuota'] ?? 1,
+      sisaSlot: map['sisa_slot'] ?? 1,
     );
   }
 
@@ -49,6 +55,8 @@ class JadwalModel {
       'status': status,
       'lokasi': lokasi,
       'keterangan': keterangan,
+      'kuota': kuota,
+      'sisa_slot': sisaSlot,
     };
   }
 
@@ -63,6 +71,8 @@ class JadwalModel {
     String? status,
     String? lokasi,
     String? keterangan,
+    int? kuota,
+    int? sisaSlot,
   }) {
     return JadwalModel(
       id: id ?? this.id,
@@ -75,11 +85,13 @@ class JadwalModel {
       status: status ?? this.status,
       lokasi: lokasi ?? this.lokasi,
       keterangan: keterangan ?? this.keterangan,
+      kuota: kuota ?? this.kuota,
+      sisaSlot: sisaSlot ?? this.sisaSlot,
     );
   }
 
   @override
   String toString() {
-    return 'JadwalModel(id: $id, dosenId: $dosenId, hari: $hari, status: $status)';
+    return 'JadwalModel(id: $id, dosenId: $dosenId, hari: $hari, status: $status, kuota: $kuota, sisaSlot: $sisaSlot)';
   }
 }

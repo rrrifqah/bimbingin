@@ -45,7 +45,9 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
   Future<void> _loadJadwal() async {
     if (mounted) setState(() => _isLoadingJadwal = true);
     try {
-      final jadwal = await SupabaseService().getJadwalTersedia(widget.dosen.id!);
+      final jadwal = await SupabaseService().getJadwalTersedia(
+        widget.dosen.id!,
+      );
       if (mounted) setState(() => _jadwalTersedia = jadwal);
     } catch (e) {
       // silently fail
@@ -67,13 +69,17 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Row(
             children: [
               Icon(Icons.warning_amber_rounded, color: Colors.orange),
               SizedBox(width: 8),
-              Text('Booking Tidak Diizinkan',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(
+                'Booking Tidak Diizinkan',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
             ],
           ),
           content: const Text(
@@ -85,7 +91,10 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              child: const Text('Mengerti', style: TextStyle(color: Colors.white)),
+              child: const Text(
+                'Mengerti',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -99,7 +108,9 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
         bool isSubmitting = false;
         return StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
             title: Row(
               children: [
                 Icon(Icons.event_available, color: primaryColor),
@@ -121,7 +132,7 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.07),
+                      color: primaryColor.withValues(alpha: 0.07),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(
@@ -129,33 +140,23 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                       children: [
                         _infoRow(Icons.person, widget.dosen.nama),
                         const SizedBox(height: 6),
-                        _infoRow(Icons.calendar_month, '${jadwal.hari}, ${jadwal.tanggal}'),
+                        _infoRow(
+                          Icons.calendar_month,
+                          (jadwal.tanggal != null && jadwal.tanggal!.isNotEmpty)
+                              ? '${jadwal.hari}, ${jadwal.tanggal}'
+                              : jadwal.hari,
+                        ),
                         const SizedBox(height: 4),
-                        _infoRow(Icons.access_time, '${jadwal.jamMulai} - ${jadwal.jamSelesai}'),
-                        const SizedBox(height: 4),
-                        _infoRow(Icons.location_on, jadwal.lokasi),
+                        _infoRow(
+                          Icons.access_time,
+                          '${jadwal.jamMulai} - ${jadwal.jamSelesai}',
+                        ),
+                        if (jadwal.lokasi != null &&
+                            jadwal.lokasi!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          _infoRow(Icons.location_on, jadwal.lokasi!),
+                        ],
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Keperluan Bimbingan:',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _keperluanController,
-                    maxLines: 3,
-                    maxLength: 300,
-                    decoration: InputDecoration(
-                      hintText: 'Contoh: Konsultasi BAB 2, Perbaikan metodologi...',
-                      hintStyle: const TextStyle(fontSize: 12, color: Colors.grey),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: primaryColor, width: 1.5),
-                      ),
-                      contentPadding: const EdgeInsets.all(12),
                     ),
                   ),
                 ],
@@ -164,22 +165,15 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
             actions: [
               TextButton(
                 onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
-                child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+                child: const Text(
+                  'Batal',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
               ElevatedButton(
                 onPressed: isSubmitting
                     ? null
                     : () async {
-                        if (_keperluanController.text.trim().isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Keperluan bimbingan harus diisi!'),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                          return;
-                        }
-
                         setDialogState(() => isSubmitting = true);
 
                         final booking = BookingModel(
@@ -187,8 +181,8 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                           dosenId: widget.dosen.id!,
                           jadwalId: jadwal.id!,
                           tanggal: jadwal.tanggal,
-                          keperluan: _keperluanController.text.trim(),
-                          status: 'pending',
+                          keperluan: 'Bimbingan',
+                          status: 'approved',
                           createdAt: DateTime.now().toIso8601String(),
                         );
 
@@ -208,8 +202,10 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                                   Icon(Icons.check_circle, color: Colors.white),
                                   SizedBox(width: 8),
                                   Expanded(
-                                      child: Text(
-                                          'Booking berhasil! Menunggu persetujuan dosen.')),
+                                    child: Text(
+                                      'Booking bimbingan berhasil disetujui secara otomatis!',
+                                    ),
+                                  ),
                                 ],
                               ),
                               backgroundColor: Colors.green,
@@ -220,25 +216,34 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                                content: Text(errorMsg),
-                                backgroundColor: Colors.red),
+                              content: Text(errorMsg),
+                              backgroundColor: Colors.red,
+                            ),
                           );
                         }
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 child: isSubmitting
                     ? const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
-                    : const Text('Booking',
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Booking',
                         style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ],
           ),
@@ -261,7 +266,6 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
     const Color textDark = Color(0xFF2D3142);
-    const Color textGrey = Color(0xFF9098B1);
     final dosen = widget.dosen;
 
     return Scaffold(
@@ -296,9 +300,10 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4)),
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
               ),
               child: Column(
@@ -309,14 +314,25 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                     height: 90,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: primaryColor.withOpacity(0.1),
-                      border: Border.all(color: primaryColor.withOpacity(0.3), width: 3),
+                      color: primaryColor.withValues(alpha: 0.1),
+                      border: Border.all(
+                        color: primaryColor.withValues(alpha: 0.3),
+                        width: 3,
+                      ),
                     ),
                     child: ClipOval(
-                      child: dosen.foto != null && dosen.foto!.startsWith('http')
-                          ? Image.network(dosen.foto!, fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  _buildInitialAvatar(dosen.nama, primaryColor, 36))
+                      child:
+                          dosen.foto != null && dosen.foto!.startsWith('http')
+                          ? Image.network(
+                              dosen.foto!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  _buildInitialAvatar(
+                                    dosen.nama,
+                                    primaryColor,
+                                    36,
+                                  ),
+                            )
                           : _buildInitialAvatar(dosen.nama, primaryColor, 36),
                     ),
                   ),
@@ -326,7 +342,10 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                   Text(
                     dosen.nama,
                     style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold, color: textDark),
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: textDark,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
@@ -334,24 +353,33 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                   // Badge pembimbing
                   if (widget.isPembimbing)
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
-                        color: primaryColor.withOpacity(0.1),
+                        color: primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: primaryColor.withOpacity(0.3)),
+                        border: Border.all(
+                          color: primaryColor.withValues(alpha: 0.3),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.verified_rounded, size: 14, color: primaryColor),
+                          Icon(
+                            Icons.verified_rounded,
+                            size: 14,
+                            color: primaryColor,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             'Dosen Pembimbing Saya',
                             style: TextStyle(
-                                color: primaryColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12),
+                              color: primaryColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -359,17 +387,33 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                   const SizedBox(height: 20),
 
                   // Info detail
-                  _buildDetailRow(Icons.badge_outlined, 'NIDN',
-                      dosen.nidn ?? '-', primaryColor),
+                  _buildDetailRow(
+                    Icons.badge_outlined,
+                    'NIDN',
+                    dosen.nidn ?? '-',
+                    primaryColor,
+                  ),
                   const Divider(height: 20),
-                  _buildDetailRow(Icons.email_outlined, 'Email',
-                      dosen.email, primaryColor),
+                  _buildDetailRow(
+                    Icons.email_outlined,
+                    'Email',
+                    dosen.email,
+                    primaryColor,
+                  ),
                   const Divider(height: 20),
-                  _buildDetailRow(Icons.school_outlined, 'Program Studi',
-                      dosen.prodi ?? dosen.jurusan, primaryColor),
+                  _buildDetailRow(
+                    Icons.school_outlined,
+                    'Program Studi',
+                    dosen.prodi ?? dosen.jurusan,
+                    primaryColor,
+                  ),
                   const Divider(height: 20),
-                  _buildDetailRow(Icons.lightbulb_outlined, 'Bidang Keahlian',
-                      dosen.bidangKeahlian ?? '-', primaryColor),
+                  _buildDetailRow(
+                    Icons.lightbulb_outlined,
+                    'Bidang Keahlian',
+                    dosen.bidangKeahlian ?? '-',
+                    primaryColor,
+                  ),
                 ],
               ),
             ),
@@ -382,24 +426,28 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                 const Text(
                   'Jadwal Tersedia',
                   style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: textDark),
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: textDark,
+                  ),
                 ),
                 if (!widget.isPembimbing)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
+                      color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
                       'Hanya untuk pembimbing',
                       style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.orange,
-                          fontWeight: FontWeight.bold),
+                        fontSize: 10,
+                        color: Colors.orange,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
               ],
@@ -408,9 +456,11 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
 
             if (_isLoadingJadwal)
               const Center(
-                  child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator()))
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                ),
+              )
             else if (_jadwalTersedia.isEmpty)
               _buildEmptyJadwal()
             else
@@ -425,27 +475,32 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
 
   Widget _buildInitialAvatar(String nama, Color primaryColor, double fontSize) {
     return Container(
-      color: primaryColor.withOpacity(0.1),
+      color: primaryColor.withValues(alpha: 0.1),
       child: Center(
         child: Text(
           nama.isNotEmpty ? nama[0].toUpperCase() : 'D',
           style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.bold,
-              color: primaryColor),
+            fontSize: fontSize,
+            fontWeight: FontWeight.bold,
+            color: primaryColor,
+          ),
         ),
       ),
     );
   }
 
   Widget _buildDetailRow(
-      IconData icon, String label, String value, Color primaryColor) {
+    IconData icon,
+    String label,
+    String value,
+    Color primaryColor,
+  ) {
     return Row(
       children: [
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: primaryColor.withOpacity(0.08),
+            color: primaryColor.withValues(alpha: 0.08),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: primaryColor, size: 18),
@@ -455,15 +510,19 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 11, color: Color(0xFF9098B1))),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF9098B1)),
+              ),
               const SizedBox(height: 2),
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF2D3142))),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF2D3142),
+                ),
+              ),
             ],
           ),
         ),
@@ -484,9 +543,13 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
         children: [
           Icon(Icons.event_busy, size: 48, color: Colors.grey.shade300),
           const SizedBox(height: 12),
-          const Text('Belum Ada Jadwal Tersedia',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+          const Text(
+            'Belum Ada Jadwal Tersedia',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2D3142),
+            ),
+          ),
           const SizedBox(height: 6),
           const Text(
             'Dosen ini belum membuat jadwal bimbingan atau semua sudah penuh.',
@@ -506,9 +569,10 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 3))
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
         ],
       ),
       child: Padding(
@@ -521,11 +585,14 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
+                    color: Colors.green.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.event_available,
-                      color: Colors.green, size: 18),
+                  child: const Icon(
+                    Icons.event_available,
+                    color: Colors.green,
+                    size: 18,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -533,54 +600,77 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                          '${jadwal.hari}, ${_formatTanggal(jadwal.tanggal)}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: Color(0xFF2D3142))),
-                      Text('${jadwal.jamMulai} - ${jadwal.jamSelesai}',
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
+                        (jadwal.tanggal != null && jadwal.tanggal!.isNotEmpty)
+                            ? '${jadwal.hari}, ${_formatTanggal(jadwal.tanggal)}'
+                            : jadwal.hari,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Color(0xFF2D3142),
+                        ),
+                      ),
+                      Text(
+                        '${jadwal.jamMulai} - ${jadwal.jamSelesai}\nSlot: sisa ${jadwal.sisaSlot} dari ${jadwal.kuota}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                          height: 1.3,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
+                    color: Colors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text('Tersedia',
-                      style: TextStyle(
-                          color: Colors.green,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Tersedia',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.location_on_outlined,
-                    size: 13, color: Colors.grey),
-                const SizedBox(width: 4),
-                Expanded(
-                    child: Text(jadwal.lokasi,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.grey))),
-              ],
-            ),
+            if (jadwal.lokasi != null && jadwal.lokasi!.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.location_on_outlined,
+                    size: 13,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      jadwal.lokasi!,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (jadwal.keterangan != null && jadwal.keterangan!.isNotEmpty) ...[
               const SizedBox(height: 4),
               Row(
                 children: [
-                  const Icon(Icons.info_outline,
-                      size: 13, color: Colors.grey),
+                  const Icon(Icons.info_outline, size: 13, color: Colors.grey),
                   const SizedBox(width: 4),
                   Expanded(
-                      child: Text(jadwal.keterangan!,
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey))),
+                    child: Text(
+                      jadwal.keterangan!,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -601,14 +691,17 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
                       ? 'Booking Jadwal Ini'
                       : 'Hanya untuk Mahasiswa Bimbingan',
                   style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: widget.isPembimbing
                       ? primaryColor
                       : Colors.grey.shade400,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   elevation: 0,
                 ),
@@ -620,7 +713,8 @@ class _DosenDetailScreenState extends State<DosenDetailScreen> {
     );
   }
 
-  String _formatTanggal(String tanggal) {
+  String _formatTanggal(String? tanggal) {
+    if (tanggal == null || tanggal.isEmpty) return '';
     try {
       return DateFormat('d MMMM yyyy', 'id_ID').format(DateTime.parse(tanggal));
     } catch (_) {

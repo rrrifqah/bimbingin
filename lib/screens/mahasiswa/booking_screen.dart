@@ -116,8 +116,12 @@ class _BookingScreenState extends State<BookingScreen>
   Future<void> _refresh() async {
     final user = context.read<AuthProvider>().currentUser;
     await _loadJadwal();
+    if (!mounted) return;
     if (user != null) {
-      await context.read<BookingProvider>().fetchBookingByMahasiswa(user.id!, forceRefresh: true);
+      await context.read<BookingProvider>().fetchBookingByMahasiswa(
+        user.id!,
+        forceRefresh: true,
+      );
     }
   }
 
@@ -134,7 +138,9 @@ class _BookingScreenState extends State<BookingScreen>
         bool isSubmitting = false;
         return StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
             title: Row(
               children: [
                 Icon(Icons.event_available, color: primaryColor),
@@ -156,7 +162,7 @@ class _BookingScreenState extends State<BookingScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.07),
+                      color: primaryColor.withValues(alpha: 0.07),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(
@@ -164,30 +170,23 @@ class _BookingScreenState extends State<BookingScreen>
                       children: [
                         _infoRow(Icons.person, _namaDosenPembimbing ?? '-'),
                         const SizedBox(height: 6),
-                        _infoRow(Icons.calendar_month, '${jadwal.hari}, ${jadwal.tanggal}'),
+                        _infoRow(
+                          Icons.calendar_month,
+                          (jadwal.tanggal != null && jadwal.tanggal!.isNotEmpty)
+                              ? '${jadwal.hari}, ${jadwal.tanggal}'
+                              : jadwal.hari,
+                        ),
                         const SizedBox(height: 4),
-                        _infoRow(Icons.access_time, '${jadwal.jamMulai} - ${jadwal.jamSelesai}'),
-                        const SizedBox(height: 4),
-                        _infoRow(Icons.location_on, jadwal.lokasi),
+                        _infoRow(
+                          Icons.access_time,
+                          '${jadwal.jamMulai} - ${jadwal.jamSelesai}',
+                        ),
+                        if (jadwal.lokasi != null &&
+                            jadwal.lokasi!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          _infoRow(Icons.location_on, jadwal.lokasi!),
+                        ],
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Keperluan Bimbingan:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _keperluanController,
-                    maxLines: 3,
-                    maxLength: 300,
-                    decoration: InputDecoration(
-                      hintText: 'Contoh: Konsultasi BAB 2, Perbaikan metodologi, dst...',
-                      hintStyle: const TextStyle(fontSize: 12, color: Colors.grey),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: primaryColor, width: 1.5),
-                      ),
-                      contentPadding: const EdgeInsets.all(12),
                     ),
                   ),
                 ],
@@ -196,22 +195,15 @@ class _BookingScreenState extends State<BookingScreen>
             actions: [
               TextButton(
                 onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
-                child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+                child: const Text(
+                  'Batal',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
               ElevatedButton(
                 onPressed: isSubmitting
                     ? null
                     : () async {
-                        if (_keperluanController.text.trim().isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Keperluan bimbingan harus diisi!'),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                          return;
-                        }
-
                         setDialogState(() => isSubmitting = true);
 
                         final booking = BookingModel(
@@ -219,12 +211,14 @@ class _BookingScreenState extends State<BookingScreen>
                           dosenId: _dosenPembimbingId!,
                           jadwalId: jadwal.id!,
                           tanggal: jadwal.tanggal,
-                          keperluan: _keperluanController.text.trim(),
-                          status: 'pending',
+                          keperluan: 'Bimbingan',
+                          status: 'approved',
                           createdAt: DateTime.now().toIso8601String(),
                         );
 
-                        final errorMsg = await context.read<BookingProvider>().createBooking(booking);
+                        final errorMsg = await context
+                            .read<BookingProvider>()
+                            .createBooking(booking);
 
                         if (!ctx.mounted) return;
                         Navigator.pop(ctx);
@@ -237,7 +231,11 @@ class _BookingScreenState extends State<BookingScreen>
                                 children: [
                                   Icon(Icons.check_circle, color: Colors.white),
                                   SizedBox(width: 8),
-                                  Expanded(child: Text('Booking berhasil! Menunggu persetujuan dosen.')),
+                                  Expanded(
+                                    child: Text(
+                                      'Booking bimbingan berhasil disetujui secara otomatis!',
+                                    ),
+                                  ),
                                 ],
                               ),
                               backgroundColor: Colors.green,
@@ -248,17 +246,35 @@ class _BookingScreenState extends State<BookingScreen>
                           _tabController.animateTo(1); // pindah ke riwayat
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+                            SnackBar(
+                              content: Text(errorMsg),
+                              backgroundColor: Colors.red,
+                            ),
                           );
                         }
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 child: isSubmitting
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Booking', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Booking',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ],
           ),
@@ -287,7 +303,10 @@ class _BookingScreenState extends State<BookingScreen>
       appBar: AppBar(
         title: const Text(
           'Booking Bimbingan',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2D3142),
+          ),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -298,7 +317,10 @@ class _BookingScreenState extends State<BookingScreen>
           indicatorColor: primaryColor,
           indicatorWeight: 3,
           tabs: [
-            const Tab(icon: Icon(Icons.calendar_today, size: 18), text: 'Jadwal Tersedia'),
+            const Tab(
+              icon: Icon(Icons.calendar_today, size: 18),
+              text: 'Jadwal Tersedia',
+            ),
             Tab(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -309,11 +331,21 @@ class _BookingScreenState extends State<BookingScreen>
                   if (bookingProvider.bookingList.isNotEmpty) ...[
                     const SizedBox(width: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primaryColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       child: Text(
                         '${bookingProvider.bookingList.length}',
-                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
@@ -345,11 +377,19 @@ class _BookingScreenState extends State<BookingScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.person_off_outlined, size: 72, color: Colors.grey.shade300),
+              Icon(
+                Icons.person_off_outlined,
+                size: 72,
+                color: Colors.grey.shade300,
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Dosen Pembimbing Belum Ditentukan',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3142),
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
@@ -374,7 +414,7 @@ class _BookingScreenState extends State<BookingScreen>
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [primaryColor, primaryColor.withOpacity(0.75)],
+                colors: [primaryColor, primaryColor.withValues(alpha: 0.75)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -383,7 +423,7 @@ class _BookingScreenState extends State<BookingScreen>
             child: Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: Colors.white.withOpacity(0.25),
+                  backgroundColor: Colors.white.withValues(alpha: 0.25),
                   child: const Icon(Icons.person, color: Colors.white),
                 ),
                 const SizedBox(width: 12),
@@ -391,10 +431,17 @@ class _BookingScreenState extends State<BookingScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Dosen Pembimbing', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                      const Text(
+                        'Dosen Pembimbing',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
                       Text(
                         _namaDosenPembimbing ?? '-',
-                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -407,7 +454,14 @@ class _BookingScreenState extends State<BookingScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Jadwal Tersedia', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+              const Text(
+                'Jadwal Tersedia',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3142),
+                ),
+              ),
               IconButton(
                 icon: Icon(Icons.refresh, color: primaryColor, size: 20),
                 onPressed: _loadJadwal,
@@ -417,7 +471,10 @@ class _BookingScreenState extends State<BookingScreen>
           ),
 
           if (_isLoadingJadwal)
-            const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()))
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            )
           else if (_jadwalTersedia.isEmpty)
             _buildEmptyJadwal()
           else
@@ -440,7 +497,14 @@ class _BookingScreenState extends State<BookingScreen>
         children: [
           Icon(Icons.event_busy, size: 56, color: Colors.grey.shade300),
           const SizedBox(height: 12),
-          const Text('Belum Ada Jadwal Tersedia', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+          const Text(
+            'Belum Ada Jadwal Tersedia',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2D3142),
+            ),
+          ),
           const SizedBox(height: 8),
           const Text(
             'Dosen pembimbing Anda belum membuat jadwal bimbingan atau semua jadwal sudah penuh.',
@@ -458,7 +522,13 @@ class _BookingScreenState extends State<BookingScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 3))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -469,28 +539,66 @@ class _BookingScreenState extends State<BookingScreen>
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
-                  child: const Icon(Icons.event_available, color: Colors.green, size: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.event_available,
+                    color: Colors.green,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${jadwal.hari}, ${jadwal.tanggal}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF2D3142))),
-                      Text('${jadwal.jamMulai} - ${jadwal.jamSelesai}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      Text(
+                        (jadwal.tanggal != null && jadwal.tanggal!.isNotEmpty)
+                            ? '${jadwal.hari}, ${jadwal.tanggal}'
+                            : jadwal.hari,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Color(0xFF2D3142),
+                        ),
+                      ),
+                      Text(
+                        '${jadwal.jamMulai} - ${jadwal.jamSelesai}\nSlot: sisa ${jadwal.sisaSlot} dari ${jadwal.kuota}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                          height: 1.3,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                  child: const Text('Tersedia', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Tersedia',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            _infoRow(Icons.location_on_outlined, jadwal.lokasi),
+            if (jadwal.lokasi != null && jadwal.lokasi!.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _infoRow(Icons.location_on_outlined, jadwal.lokasi!),
+            ],
             if (jadwal.keterangan != null && jadwal.keterangan!.isNotEmpty) ...[
               const SizedBox(height: 4),
               _infoRow(Icons.info_outline, jadwal.keterangan!),
@@ -500,11 +608,23 @@ class _BookingScreenState extends State<BookingScreen>
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () => _showBookingDialog(jadwal),
-                icon: const Icon(Icons.add_circle_outline, size: 16, color: Colors.white),
-                label: const Text('Booking Jadwal Ini', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                icon: const Icon(
+                  Icons.add_circle_outline,
+                  size: 16,
+                  color: Colors.white,
+                ),
+                label: const Text(
+                  'Booking Jadwal Ini',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
@@ -532,9 +652,20 @@ class _BookingScreenState extends State<BookingScreen>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.history_toggle_off, size: 72, color: Colors.grey.shade300),
+                      Icon(
+                        Icons.history_toggle_off,
+                        size: 72,
+                        color: Colors.grey.shade300,
+                      ),
                       const SizedBox(height: 16),
-                      const Text('Belum Ada Riwayat Booking', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+                      const Text(
+                        'Belum Ada Riwayat Booking',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2D3142),
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       const Text(
                         'Anda belum pernah melakukan\nbooking jadwal bimbingan.',
@@ -549,7 +680,8 @@ class _BookingScreenState extends State<BookingScreen>
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: bookings.length,
-              itemBuilder: (_, i) => _buildRiwayatCard(bookings[i], primaryColor),
+              itemBuilder: (_, i) =>
+                  _buildRiwayatCard(bookings[i], primaryColor),
             ),
     );
   }
@@ -585,8 +717,14 @@ class _BookingScreenState extends State<BookingScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: statusColor.withOpacity(0.2)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))],
+        border: Border.all(color: statusColor.withValues(alpha: 0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -602,33 +740,77 @@ class _BookingScreenState extends State<BookingScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(b.keperluan, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF2D3142)), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(
+                        b.keperluan,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Color(0xFF2D3142),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       const SizedBox(height: 4),
-                      Text(statusDesc, style: TextStyle(fontSize: 11, color: statusColor, fontWeight: FontWeight.w500)),
+                      Text(
+                        statusDesc,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: statusColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: statusColor.withOpacity(0.3))),
-                  child: Text(statusLabel, style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: statusColor.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
             const Divider(height: 1),
             const SizedBox(height: 8),
-            _infoRow(Icons.calendar_month_outlined, 'Dibuat: ${_formatDateTime(b.createdAt)}'),
+            _infoRow(
+              Icons.calendar_month_outlined,
+              'Dibuat: ${_formatDateTime(b.createdAt)}',
+            ),
             if (b.catatanStaf != null && b.catatanStaf!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: b.status == 'rejected' ? Colors.red.shade50 : Colors.green.shade50,
+                  color: b.status == 'rejected'
+                      ? Colors.red.shade50
+                      : Colors.green.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: b.status == 'rejected' ? Colors.red.shade200 : Colors.green.shade200),
+                  border: Border.all(
+                    color: b.status == 'rejected'
+                        ? Colors.red.shade200
+                        : Colors.green.shade200,
+                  ),
                 ),
-                child: _infoRow(Icons.comment_outlined, 'Catatan: ${b.catatanStaf}'),
+                child: _infoRow(
+                  Icons.comment_outlined,
+                  'Catatan: ${b.catatanStaf}',
+                ),
               ),
             ],
           ],
@@ -639,7 +821,10 @@ class _BookingScreenState extends State<BookingScreen>
 
   String _formatDateTime(String raw) {
     try {
-      return DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(DateTime.parse(raw));
+      return DateFormat(
+        'dd MMM yyyy, HH:mm',
+        'id_ID',
+      ).format(DateTime.parse(raw));
     } catch (_) {
       return raw;
     }

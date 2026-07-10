@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'admin_dashboard.dart';
-import 'kelola_jadwal_screen.dart';
 import 'kelola_mahasiswa_screen.dart';
 import 'atur_pembimbing_screen.dart';
 // Import halaman profil bersama untuk semua role
 import '../shared/profile_screen.dart';
+import '../../widgets/floating_curved_navbar.dart';
 
 /// Bottom navigation untuk role Staff/Admin.
 /// Menu: Booking, Kelola Data, Atur Pembimbing, Profil
@@ -20,10 +20,10 @@ class AdminMainState extends State<AdminMain> {
 
   // Daftar halaman untuk bottom navigation admin/staf
   final List<Widget> _screens = [
-    const AdminDashboard(),       // Kelola Booking
+    const AdminDashboard(), // Kelola Booking
     const KelolaMahasiswaScreen(), // Kelola Mahasiswa
-    const AturPembimbingScreen(),  // Atur Dosen Pembimbing
-    const ProfileScreen(),         // Profil Staf
+    const AturPembimbingScreen(), // Atur Dosen Pembimbing
+    const ProfileScreen(), // Profil Staf
   ];
 
   void setIndex(int index) {
@@ -34,61 +34,22 @@ class AdminMainState extends State<AdminMain> {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 15,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          selectedItemColor: primaryColor,
-          unselectedItemColor: const Color(0xFF9098B1),
-          selectedLabelStyle:
-              const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-          unselectedLabelStyle:
-              const TextStyle(fontWeight: FontWeight.w500, fontSize: 11),
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_customize_outlined),
-              activeIcon: Icon(Icons.dashboard_customize),
-              label: 'Monitoring',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.manage_accounts_outlined),
-              activeIcon: Icon(Icons.manage_accounts),
-              label: 'Mahasiswa',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.people_alt_outlined),
-              activeIcon: Icon(Icons.people_alt),
-              label: 'Pembimbing',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline_rounded),
-              activeIcon: Icon(Icons.person_rounded),
-              label: 'Profil',
-            ),
-          ],
-        ),
+      extendBody: true,
+      body: IndexedStack(index: _currentIndex, children: _screens),
+      bottomNavigationBar: FloatingCurvedNavBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          Icons.dashboard_customize_outlined,
+          Icons.manage_accounts_outlined,
+          Icons.people_alt_outlined,
+          Icons.person_outline_rounded,
+        ],
       ),
     );
   }

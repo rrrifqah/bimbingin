@@ -18,21 +18,24 @@ class BimbinganProvider with ChangeNotifier {
       id: '1985010101',
       name: 'Dr. Budi Santoso, M.Kom',
       department: 'Teknik Informatika',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+      avatarUrl:
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
       availableSlots: ['09:00 WIB', '10:30 WIB', '14:00 WIB'],
     ),
     Lecturer(
       id: '1989020202',
       name: 'Siti Aminah, S.T., M.T.',
       department: 'Sistem Informasi',
-      avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200',
+      avatarUrl:
+          'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200',
       availableSlots: ['08:00 WIB', '10:00 WIB', '13:00 WIB', '15:00 WIB'],
     ),
     Lecturer(
       id: '1975030303',
       name: 'Prof. Dr. Andi Wijaya',
       department: 'Teknologi Informasi',
-      avatarUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200',
+      avatarUrl:
+          'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200',
       availableSlots: ['09:00 WIB', '11:00 WIB', '14:00 WIB'],
     ),
   ];
@@ -51,13 +54,15 @@ class BimbinganProvider with ChangeNotifier {
         ThesisProgress(
           chapterName: 'Bab 1: Pendahuluan',
           status: 'ACC',
-          notes: 'Pendahuluan sudah lengkap, batasan masalah sangat jelas. Lanjutkan ke Bab 2.',
+          notes:
+              'Pendahuluan sudah lengkap, batasan masalah sangat jelas. Lanjutkan ke Bab 2.',
           lastUpdated: DateTime.now().subtract(const Duration(days: 10)),
         ),
         ThesisProgress(
           chapterName: 'Bab 2: Tinjauan Pustaka',
           status: 'Revisi',
-          notes: 'Tambahkan studi literatur terbaru tentang Flutter State Management dan efisiensi booking.',
+          notes:
+              'Tambahkan studi literatur terbaru tentang Flutter State Management dan efisiensi booking.',
           lastUpdated: DateTime.now().subtract(const Duration(days: 4)),
         ),
         ThesisProgress(
@@ -132,7 +137,7 @@ class BimbinganProvider with ChangeNotifier {
           lastUpdated: DateTime.now(),
         ),
       ],
-    )
+    ),
   ];
 
   // Mock Bookings
@@ -175,7 +180,9 @@ class BimbinganProvider with ChangeNotifier {
   Student? get currentStudent {
     if (_currentUserRole == 'Mahasiswa' && _currentUserId != null) {
       return _students.firstWhere(
-        (s) => s.id == _currentUserId || s.name.toLowerCase() == _currentUserId!.toLowerCase(),
+        (s) =>
+            s.id == _currentUserId ||
+            s.name.toLowerCase() == _currentUserId!.toLowerCase(),
         orElse: () => _students.first,
       );
     }
@@ -185,7 +192,9 @@ class BimbinganProvider with ChangeNotifier {
   Lecturer? get currentLecturer {
     if (_currentUserRole == 'Dosen' && _currentUserId != null) {
       return _lecturers.firstWhere(
-        (l) => l.id == _currentUserId || l.name.toLowerCase() == _currentUserId!.toLowerCase(),
+        (l) =>
+            l.id == _currentUserId ||
+            l.name.toLowerCase() == _currentUserId!.toLowerCase(),
         orElse: () => _lecturers.first,
       );
     }
@@ -200,13 +209,17 @@ class BimbinganProvider with ChangeNotifier {
     if (role == 'Mahasiswa') {
       // Find match or use first student for test simplicity
       final match = _students.firstWhere(
-        (s) => s.id == username || s.name.toLowerCase().contains(username.toLowerCase()),
+        (s) =>
+            s.id == username ||
+            s.name.toLowerCase().contains(username.toLowerCase()),
         orElse: () => _students.first,
       );
       _currentUserId = match.id;
     } else if (role == 'Dosen') {
       final match = _lecturers.firstWhere(
-        (l) => l.id == username || l.name.toLowerCase().contains(username.toLowerCase()),
+        (l) =>
+            l.id == username ||
+            l.name.toLowerCase().contains(username.toLowerCase()),
         orElse: () => _lecturers.first,
       );
       _currentUserId = match.id;
@@ -225,7 +238,13 @@ class BimbinganProvider with ChangeNotifier {
   }
 
   // Bookings
-  void createBooking(String studentId, String lecturerId, String date, String timeSlot, String purpose) {
+  void createBooking(
+    String studentId,
+    String lecturerId,
+    String date,
+    String timeSlot,
+    String purpose,
+  ) {
     final newId = 'B${(_bookings.length + 1).toString().padLeft(3, '0')}';
     final booking = Booking(
       id: newId,
@@ -237,7 +256,7 @@ class BimbinganProvider with ChangeNotifier {
       status: 'Pending',
     );
     _bookings.add(booking);
-    
+
     // Increment student waiting days
     final studentIndex = _students.indexWhere((s) => s.id == studentId);
     if (studentIndex != -1) {
@@ -279,14 +298,21 @@ class BimbinganProvider with ChangeNotifier {
       final updatedSlots = List<String>.from(_lecturers[index].availableSlots);
       if (!updatedSlots.contains(timeSlot)) {
         updatedSlots.add(timeSlot);
-        _lecturers[index] = _lecturers[index].copyWith(availableSlots: updatedSlots);
+        _lecturers[index] = _lecturers[index].copyWith(
+          availableSlots: updatedSlots,
+        );
         notifyListeners();
       }
     }
   }
 
   // Thesis Progress Management
-  void updateThesisProgress(String studentId, String chapterName, String status, String notes) {
+  void updateThesisProgress(
+    String studentId,
+    String chapterName,
+    String status,
+    String notes,
+  ) {
     final studentIndex = _students.indexWhere((s) => s.id == studentId);
     if (studentIndex != -1) {
       final updatedProgress = _students[studentIndex].progress.map((tp) {

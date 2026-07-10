@@ -10,7 +10,8 @@ class ProgresProvider with ChangeNotifier {
   final SupabaseService _service = SupabaseService();
 
   List<ProgresModel> get tahapMahasiswa => _tahapMahasiswa;
-  Map<int, List<ProgresModel>> get tahapGroupedByMahasiswa => _tahapGroupedByMahasiswa;
+  Map<int, List<ProgresModel>> get tahapGroupedByMahasiswa =>
+      _tahapGroupedByMahasiswa;
   bool get isLoading => _isLoading;
   int get menungguKonfirmasiCount => _menungguKonfirmasiCount;
 
@@ -54,10 +55,11 @@ class ProgresProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      _tahapGroupedByMahasiswa =
-          await _service.getAllTahapGroupedByMahasiswaForDosen(dosenId);
-      _menungguKonfirmasiCount =
-          await _service.countMenungguKonfirmasiByDosen(dosenId);
+      _tahapGroupedByMahasiswa = await _service
+          .getAllTahapGroupedByMahasiswaForDosen(dosenId);
+      _menungguKonfirmasiCount = await _service.countMenungguKonfirmasiByDosen(
+        dosenId,
+      );
     } catch (e) {
       _tahapGroupedByMahasiswa = {};
       _menungguKonfirmasiCount = 0;
@@ -67,23 +69,28 @@ class ProgresProvider with ChangeNotifier {
   }
 
   Future<bool> updateStatusByDosen(
-      int progresId, String status, String? catatan, int dosenId) async {
+    int progresId,
+    String status,
+    String? catatan,
+    int dosenId,
+  ) async {
     try {
-      final result = await _service.updateStatusProgresById(progresId, status, catatan);
+      final result = await _service.updateStatusProgresById(
+        progresId,
+        status,
+        catatan,
+      );
       if (result > 0) {
         for (final key in _tahapGroupedByMahasiswa.keys) {
           final list = _tahapGroupedByMahasiswa[key]!;
           final idx = list.indexWhere((p) => p.id == progresId);
           if (idx != -1) {
-            list[idx] = list[idx].copyWith(
-              status: status,
-              catatan: catatan,
-            );
+            list[idx] = list[idx].copyWith(status: status, catatan: catatan);
             break;
           }
         }
-        _menungguKonfirmasiCount =
-            await _service.countMenungguKonfirmasiByDosen(dosenId);
+        _menungguKonfirmasiCount = await _service
+            .countMenungguKonfirmasiByDosen(dosenId);
         notifyListeners();
         return true;
       }
@@ -171,5 +178,27 @@ class ProgresProvider with ChangeNotifier {
       return false;
     }
   }
-}
 
+  /// Memperbarui judul skripsi mahasiswa
+  Future<bool> updateJudulSkripsi(int mahasiswaId, String newJudul) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final success = await _service.updateJudulSkripsi(mahasiswaId, newJudul);
+      if (success) {
+        // Update local list
+        _tahapMahasiswa = _tahapMahasiswa
+            .map((p) => p.copyWith(judulSkripsi: newJudul))
+            .toList();
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+}

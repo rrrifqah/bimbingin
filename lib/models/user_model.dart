@@ -10,10 +10,10 @@ class UserModel {
   final String? foto;
 
   // Field tambahan khusus dosen
-  final String? nidn;         // Nomor Induk Dosen Nasional
-  final String? prodi;        // Program Studi
+  final String? nidn; // Nomor Induk Dosen Nasional
+  final String? prodi; // Program Studi
   final String? bidangKeahlian; // Bidang Keahlian dosen
-  final String? phone;        // Nomor HP
+  final String? phone; // Nomor HP
 
   UserModel({
     this.id,

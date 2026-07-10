@@ -1,11 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
-import '../../providers/auth_provider.dart';
-import '../../providers/progres_provider.dart';
-import '../../providers/target_provider.dart';
-import '../../models/progres_model.dart';
-import 'admin_main.dart';
 
 class UpdateProgresScreen extends StatefulWidget {
   const UpdateProgresScreen({super.key});
@@ -16,7 +9,6 @@ class UpdateProgresScreen extends StatefulWidget {
 
 class _UpdateProgresScreenState extends State<UpdateProgresScreen> {
   bool _dataLoaded = false;
-  String _searchQuery = '';
 
   @override
   void didChangeDependencies() {

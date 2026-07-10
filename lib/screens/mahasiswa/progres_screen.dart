@@ -27,7 +27,9 @@ class _ProgresScreenState extends State<ProgresScreen> {
     super.didChangeDependencies();
     if (!_dataLoaded) {
       _dataLoaded = true;
-      _loadData();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadData();
+      });
     }
   }
 
@@ -56,7 +58,9 @@ class _ProgresScreenState extends State<ProgresScreen> {
       // 2. Fetch thesis progress to get title if available
       await progresProvider.fetchTahapMahasiswa(user.id!);
       final tahapList = progresProvider.tahapMahasiswa;
-      final judul = tahapList.isNotEmpty ? tahapList.first.judulSkripsi : 'Belum memasukkan judul skripsi';
+      final judul = tahapList.isNotEmpty
+          ? tahapList.first.judulSkripsi
+          : 'Belum memasukkan judul skripsi';
 
       // 3. Fetch riwayat konsultasi
       final riwayat = await supabase.getKonsultasiByMahasiswa(user.id!);
@@ -110,7 +114,10 @@ class _ProgresScreenState extends State<ProgresScreen> {
                   children: [
                     const Text(
                       'Tambah Riwayat Bimbingan',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 20),
                     // Tanggal Picker Row
@@ -127,7 +134,10 @@ class _ProgresScreenState extends State<ProgresScreen> {
                         }
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 16,
+                        ),
                         decoration: BoxDecoration(
                           border: Border.all(color: Colors.grey.shade400),
                           borderRadius: BorderRadius.circular(10),
@@ -139,7 +149,10 @@ class _ProgresScreenState extends State<ProgresScreen> {
                               'Tanggal: ${DateFormat('dd MMMM yyyy', 'id_ID').format(selectedDate)}',
                               style: const TextStyle(fontSize: 14),
                             ),
-                            const Icon(Icons.calendar_month, color: Color(0xFF3B4FE4)),
+                            const Icon(
+                              Icons.calendar_month,
+                              color: Color(0xFF39A846),
+                            ),
                           ],
                         ),
                       ),
@@ -153,7 +166,9 @@ class _ProgresScreenState extends State<ProgresScreen> {
                         labelText: 'Isi Konsultasi / Catatan Revisi',
                         hintText: 'Tulis hasil bimbingan hari ini...',
                         alignLabelWithHint: true,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -162,11 +177,16 @@ class _ProgresScreenState extends State<ProgresScreen> {
                       initialValue: selectedStatus,
                       decoration: InputDecoration(
                         labelText: 'Status',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       items: const [
                         DropdownMenuItem(value: 'acc', child: Text('ACC')),
-                        DropdownMenuItem(value: 'revisi', child: Text('Revisi')),
+                        DropdownMenuItem(
+                          value: 'revisi',
+                          child: Text('Revisi'),
+                        ),
                       ],
                       onChanged: (val) {
                         if (val != null) {
@@ -182,12 +202,16 @@ class _ProgresScreenState extends State<ProgresScreen> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Theme.of(context).primaryColor,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                         onPressed: () async {
                           if (isiController.text.trim().isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Isi konsultasi harus diisi!')),
+                              const SnackBar(
+                                content: Text('Isi konsultasi harus diisi!'),
+                              ),
                             );
                             return;
                           }
@@ -212,22 +236,30 @@ class _ProgresScreenState extends State<ProgresScreen> {
 
                           Navigator.pop(ctx);
 
-                          final scaffoldMessenger = ScaffoldMessenger.of(context);
+                          final scaffoldMessenger = ScaffoldMessenger.of(
+                            context,
+                          );
                           try {
                             final supabase = SupabaseService();
-                            final newId = await supabase.insertKonsultasi(newKonsultasi);
+                            final newId = await supabase.insertKonsultasi(
+                              newKonsultasi,
+                            );
 
                             if (newId > 0) {
                               scaffoldMessenger.showSnackBar(
                                 const SnackBar(
-                                  content: Text('Berhasil menyimpan riwayat bimbingan'),
+                                  content: Text(
+                                    'Berhasil menyimpan riwayat bimbingan',
+                                  ),
                                   backgroundColor: Colors.green,
                                 ),
                               );
                             } else {
                               scaffoldMessenger.showSnackBar(
                                 const SnackBar(
-                                  content: Text('Gagal menyimpan riwayat bimbingan'),
+                                  content: Text(
+                                    'Gagal menyimpan riwayat bimbingan',
+                                  ),
                                   backgroundColor: Colors.red,
                                 ),
                               );
@@ -245,7 +277,11 @@ class _ProgresScreenState extends State<ProgresScreen> {
                         },
                         child: const Text(
                           'Simpan',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
                     ),
@@ -269,7 +305,10 @@ class _ProgresScreenState extends State<ProgresScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.red),
             SizedBox(width: 8),
-            Text('Hapus Riwayat', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              'Hapus Riwayat',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         content: const Text('Yakin ingin menghapus riwayat konsultasi ini?'),
@@ -281,7 +320,9 @@ class _ProgresScreenState extends State<ProgresScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             onPressed: () async {
               Navigator.pop(ctx);
@@ -322,10 +363,155 @@ class _ProgresScreenState extends State<ProgresScreen> {
 
               await _loadData();
             },
-            child: const Text('Hapus', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Hapus',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  void _showEditJudulDialog() {
+    final user = context.read<AuthProvider>().currentUser;
+    if (user == null) return;
+
+    final controller = TextEditingController(
+      text:
+          (_judulSkripsi == 'Belum ditentukan' ||
+              _judulSkripsi == 'Belum memasukkan judul skripsi')
+          ? ''
+          : _judulSkripsi,
+    );
+    final primaryColor = Theme.of(context).primaryColor;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.edit_note_rounded, color: Color(0xFF39A846)),
+              SizedBox(width: 8),
+              Text(
+                'Edit Judul Skripsi',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Masukkan judul skripsi Anda:',
+                style: TextStyle(fontSize: 13, color: Color(0xFF9098B1)),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 3,
+                style: const TextStyle(fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'Tulis judul skripsi lengkap...',
+                  hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: primaryColor, width: 1.5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () async {
+                final newJudul = controller.text.trim();
+                if (newJudul.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Judul skripsi tidak boleh kosong!'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+
+                Navigator.pop(ctx);
+
+                if (mounted) {
+                  setState(() {
+                    _isLoadingKonsultasi = true;
+                  });
+                }
+
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                try {
+                  final progresProvider = context.read<ProgresProvider>();
+                  final success = await progresProvider.updateJudulSkripsi(
+                    user.id!,
+                    newJudul,
+                  );
+
+                  if (success) {
+                    scaffoldMessenger.showSnackBar(
+                      const SnackBar(
+                        content: Text('Judul skripsi berhasil diperbarui'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } else {
+                    scaffoldMessenger.showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Gagal memperbarui judul skripsi. Pastikan Anda sudah memiliki dosen pembimbing.',
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Terjadi kesalahan: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+
+                await _loadData();
+              },
+              child: const Text(
+                'Simpan',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -360,7 +546,7 @@ class _ProgresScreenState extends State<ProgresScreen> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: const BoxDecoration(
-              color: Color(0xFFE8F0FE), // Biru muda
+              color: Color(0xFFE8F5E9), // Hijau muda
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(12),
                 topRight: Radius.circular(12),
@@ -368,7 +554,11 @@ class _ProgresScreenState extends State<ProgresScreen> {
             ),
             child: const Row(
               children: [
-                Icon(Icons.description_rounded, color: Color(0xFF3B4FE4), size: 24),
+                Icon(
+                  Icons.description_rounded,
+                  color: Color(0xFF39A846),
+                  size: 24,
+                ),
                 SizedBox(width: 12),
                 Text(
                   'Lembar Konsultasi Skripsi',
@@ -391,9 +581,16 @@ class _ProgresScreenState extends State<ProgresScreen> {
                 const SizedBox(height: 8),
                 _buildHeaderRow('NIM', user.nimNip),
                 const SizedBox(height: 8),
-                _buildHeaderRow('Judul Skripsi', _judulSkripsi ?? 'Belum ditentukan'),
+                _buildHeaderRow(
+                  'Judul Skripsi',
+                  _judulSkripsi ?? 'Belum ditentukan',
+                  onEdit: _showEditJudulDialog,
+                ),
                 const SizedBox(height: 8),
-                _buildHeaderRow('Dosen Pembimbing', _dosenPembimbing?.nama ?? 'Belum diinput ke sistem'),
+                _buildHeaderRow(
+                  'Dosen Pembimbing',
+                  _dosenPembimbing?.nama ?? 'Belum diinput ke sistem',
+                ),
               ],
             ),
           ),
@@ -402,7 +599,7 @@ class _ProgresScreenState extends State<ProgresScreen> {
     );
   }
 
-  Widget _buildHeaderRow(String label, String value) {
+  Widget _buildHeaderRow(String label, String value, {VoidCallback? onEdit}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -422,13 +619,38 @@ class _ProgresScreenState extends State<ProgresScreen> {
           style: TextStyle(fontSize: 12, color: Color(0xFF2D3142)),
         ),
         Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2D3142),
-            ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2D3142),
+                  ),
+                ),
+              ),
+              if (onEdit != null) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onEdit,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF39A846).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      size: 14,
+                      color: Color(0xFF39A846),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ],
@@ -465,9 +687,7 @@ class _ProgresScreenState extends State<ProgresScreen> {
     final primaryColor = Theme.of(context).primaryColor;
 
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
@@ -475,7 +695,10 @@ class _ProgresScreenState extends State<ProgresScreen> {
       appBar: AppBar(
         title: const Text(
           'Progres Skripsi',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2D3142),
+          ),
         ),
         backgroundColor: Colors.white,
         centerTitle: true,
@@ -484,13 +707,16 @@ class _ProgresScreenState extends State<ProgresScreen> {
           IconButton(
             icon: const Icon(Icons.refresh, color: Color(0xFF9098B1)),
             onPressed: _loadData,
-          )
+          ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: primaryColor,
-        onPressed: _showAddKonsultasiSheet,
-        child: const Icon(Icons.add, color: Colors.white),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 70.0),
+        child: FloatingActionButton(
+          backgroundColor: primaryColor,
+          onPressed: _showAddKonsultasiSheet,
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
       ),
       body: _isLoadingKonsultasi
           ? const Center(child: CircularProgressIndicator())
@@ -521,10 +747,12 @@ class _ProgresScreenState extends State<ProgresScreen> {
                             itemCount: _riwayatKonsultasi.length,
                             itemBuilder: (context, index) {
                               final item = _riwayatKonsultasi[index];
-                              final isLast = index == _riwayatKonsultasi.length - 1;
+                              final isLast =
+                                  index == _riwayatKonsultasi.length - 1;
                               return IntrinsicHeight(
                                 child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     // Timeline column
                                     Column(
@@ -532,9 +760,11 @@ class _ProgresScreenState extends State<ProgresScreen> {
                                         Container(
                                           width: 12,
                                           height: 12,
-                                          margin: const EdgeInsets.only(top: 14),
+                                          margin: const EdgeInsets.only(
+                                            top: 14,
+                                          ),
                                           decoration: const BoxDecoration(
-                                            color: Color(0xFF3B4FE4),
+                                            color: Color(0xFF39A846),
                                             shape: BoxShape.circle,
                                           ),
                                         ),
@@ -542,7 +772,9 @@ class _ProgresScreenState extends State<ProgresScreen> {
                                           Expanded(
                                             child: Container(
                                               width: 2,
-                                              color: const Color(0xFF3B4FE4).withValues(alpha: 0.3),
+                                              color: const Color(
+                                                0xFF39A846,
+                                              ).withValues(alpha: 0.3),
                                             ),
                                           ),
                                       ],
@@ -551,57 +783,105 @@ class _ProgresScreenState extends State<ProgresScreen> {
                                     // Card content
                                     Expanded(
                                       child: Padding(
-                                        padding: const EdgeInsets.only(bottom: 16),
+                                        padding: const EdgeInsets.only(
+                                          bottom: 16,
+                                        ),
                                         child: GestureDetector(
-                                          onLongPress: () => _confirmDeleteKonsultasi(item.id!),
+                                          onLongPress: () =>
+                                              _confirmDeleteKonsultasi(
+                                                item.id!,
+                                              ),
                                           child: Container(
                                             padding: const EdgeInsets.all(16),
                                             decoration: BoxDecoration(
                                               color: Colors.white,
-                                              borderRadius: BorderRadius.circular(12),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                               boxShadow: [
                                                 BoxShadow(
-                                                  color: Colors.black.withValues(alpha: 0.03),
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.03),
                                                   blurRadius: 6,
                                                   offset: const Offset(0, 2),
                                                 ),
                                               ],
                                               border: Border.all(
-                                                color: item.status.toLowerCase() == 'acc'
-                                                    ? const Color(0xFF22C55E).withValues(alpha: 0.2)
-                                                    : const Color(0xFFEF4444).withValues(alpha: 0.2),
+                                                color:
+                                                    item.status.toLowerCase() ==
+                                                        'acc'
+                                                    ? const Color(
+                                                        0xFF22C55E,
+                                                      ).withValues(alpha: 0.2)
+                                                    : const Color(
+                                                        0xFFEF4444,
+                                                      ).withValues(alpha: 0.2),
                                               ),
                                             ),
                                             child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
                                                 Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment
+                                                          .spaceBetween,
                                                   children: [
                                                     Text(
-                                                      _formatTanggal(item.tanggal),
+                                                      _formatTanggal(
+                                                        item.tanggal,
+                                                      ),
                                                       style: const TextStyle(
-                                                        fontWeight: FontWeight.bold,
+                                                        fontWeight:
+                                                            FontWeight.bold,
                                                         fontSize: 13,
-                                                        color: Color(0xFF3B4FE4),
+                                                        color: Color(
+                                                          0xFF39A846,
+                                                        ),
                                                       ),
                                                     ),
                                                     Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 3,
+                                                          ),
                                                       decoration: BoxDecoration(
-                                                        color: item.status.toLowerCase() == 'acc'
-                                                            ? const Color(0xFF22C55E).withValues(alpha: 0.1)
-                                                            : const Color(0xFFEF4444).withValues(alpha: 0.1),
-                                                        borderRadius: BorderRadius.circular(6),
+                                                        color:
+                                                            item.status
+                                                                    .toLowerCase() ==
+                                                                'acc'
+                                                            ? const Color(
+                                                                0xFF22C55E,
+                                                              ).withValues(
+                                                                alpha: 0.1,
+                                                              )
+                                                            : const Color(
+                                                                0xFFEF4444,
+                                                              ).withValues(
+                                                                alpha: 0.1,
+                                                              ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              6,
+                                                            ),
                                                       ),
                                                       child: Text(
-                                                        item.status.toUpperCase(),
+                                                        item.status
+                                                            .toUpperCase(),
                                                         style: TextStyle(
-                                                          color: item.status.toLowerCase() == 'acc'
-                                                              ? const Color(0xFF22C55E)
-                                                              : const Color(0xFFEF4444),
+                                                          color:
+                                                              item.status
+                                                                      .toLowerCase() ==
+                                                                  'acc'
+                                                              ? const Color(
+                                                                  0xFF22C55E,
+                                                                )
+                                                              : const Color(
+                                                                  0xFFEF4444,
+                                                                ),
                                                           fontSize: 10,
-                                                          fontWeight: FontWeight.bold,
+                                                          fontWeight:
+                                                              FontWeight.bold,
                                                         ),
                                                       ),
                                                     ),

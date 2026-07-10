@@ -13,7 +13,11 @@ class JadwalProvider with ChangeNotifier {
   Future<void> fetchJadwalDosen(int dosenId) async {
     _isLoading = true;
     notifyListeners();
-    _jadwalList = await _service.getJadwalByDosen(dosenId);
+    try {
+      _jadwalList = await _service.getJadwalByDosen(dosenId);
+    } catch (_) {
+      _jadwalList = [];
+    }
     _isLoading = false;
     notifyListeners();
   }
@@ -21,7 +25,11 @@ class JadwalProvider with ChangeNotifier {
   Future<void> fetchJadwalTersedia(int dosenId) async {
     _isLoading = true;
     notifyListeners();
-    _jadwalList = await _service.getJadwalTersedia(dosenId);
+    try {
+      _jadwalList = await _service.getJadwalTersedia(dosenId);
+    } catch (_) {
+      _jadwalList = [];
+    }
     _isLoading = false;
     notifyListeners();
   }
@@ -48,6 +56,32 @@ class JadwalProvider with ChangeNotifier {
           _jadwalList[index] = _jadwalList[index].copyWith(status: status);
           notifyListeners();
         }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> updateJadwal(JadwalModel jadwal) async {
+    try {
+      int result = await _service.updateJadwal(jadwal);
+      if (result > 0) {
+        await fetchJadwalDosen(jadwal.dosenId);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteJadwal(int id, int dosenId) async {
+    try {
+      int result = await _service.deleteJadwal(id);
+      if (result > 0) {
+        await fetchJadwalDosen(dosenId);
         return true;
       }
       return false;

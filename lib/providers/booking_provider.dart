@@ -16,7 +16,6 @@ class BookingProvider with ChangeNotifier {
     notifyListeners();
   }
 
-
   // Cache control - avoid redundant fetches
   int? _lastFetchedUserId;
   String? _lastFetchedRole; // 'mahasiswa' | 'dosen'
@@ -33,7 +32,8 @@ class BookingProvider with ChangeNotifier {
   bool _isCacheValid(int userId, String role) {
     if (_lastFetchedUserId != userId || _lastFetchedRole != role) return false;
     if (_lastFetchedAt == null) return false;
-    return DateTime.now().difference(_lastFetchedAt!).inSeconds < _cacheDurationSeconds;
+    return DateTime.now().difference(_lastFetchedAt!).inSeconds <
+        _cacheDurationSeconds;
   }
 
   void _invalidateCache() {
@@ -43,7 +43,10 @@ class BookingProvider with ChangeNotifier {
   }
 
   /// Fetch booking milik mahasiswa (dengan cache)
-  Future<void> fetchBookingByMahasiswa(int mahasiswaId, {bool forceRefresh = false}) async {
+  Future<void> fetchBookingByMahasiswa(
+    int mahasiswaId, {
+    bool forceRefresh = false,
+  }) async {
     if (!forceRefresh && _isCacheValid(mahasiswaId, 'mahasiswa')) return;
 
     _isLoading = true;
@@ -64,7 +67,10 @@ class BookingProvider with ChangeNotifier {
   }
 
   /// Fetch booking untuk dosen (dengan cache)
-  Future<void> fetchBookingByDosen(int dosenId, {bool forceRefresh = false}) async {
+  Future<void> fetchBookingByDosen(
+    int dosenId, {
+    bool forceRefresh = false,
+  }) async {
     if (!forceRefresh && _isCacheValid(dosenId, 'dosen')) return;
 
     _isLoading = true;
@@ -102,11 +108,24 @@ class BookingProvider with ChangeNotifier {
   /// Return: null jika sukses, String pesan error jika gagal
   Future<String?> createBooking(BookingModel booking) async {
     try {
-      // Validasi 1: Tanggal tidak boleh sudah lewat
-      if (booking.tanggal != null) {
+      // Validasi 0: Cek apakah dosen yang dibooking adalah dosen pembimbing mahasiswa
+      final assignedDosenId = await _service.getDosenPembimbingByMahasiswa(
+        booking.mahasiswaId,
+      );
+      if (assignedDosenId == null) {
+        return 'Anda belum memiliki dosen pembimbing. Silakan hubungi akademik.';
+      }
+      if (assignedDosenId != booking.dosenId) {
+        return 'Anda hanya diizinkan mem-booking jadwal dosen pembimbing Anda sendiri.';
+      }
+
+      // Validasi 1: Tanggal tidak boleh sudah lewat (jika tanggal diisi)
+      if (booking.tanggal != null && booking.tanggal!.isNotEmpty) {
         try {
           final jadwalDate = DateTime.parse(booking.tanggal!);
-          if (jadwalDate.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
+          if (jadwalDate.isBefore(
+            DateTime.now().subtract(const Duration(days: 1)),
+          )) {
             return 'Jadwal ini sudah lewat, tidak dapat dibooking.';
           }
         } catch (_) {}
@@ -127,34 +146,36 @@ class BookingProvider with ChangeNotifier {
         return 'Jadwal tidak ditemukan.';
       }
 
-      // Hitung total slot secara dinamis berdasarkan durasi (tiap 30 menit = 1 slot)
-      final startParts = jadwal.jamMulai.split(':');
-      final endParts = jadwal.jamSelesai.split(':');
-      final startMin = int.parse(startParts[0]) * 60 + int.parse(startParts[1]);
-      final endMin = int.parse(endParts[0]) * 60 + int.parse(endParts[1]);
-      final duration = endMin - startMin;
-      int totalSlots = 3;
-      if (duration > 0) {
-        totalSlots = (duration / 30).floor();
-        if (totalSlots <= 0) totalSlots = 1;
-      }
+      int totalSlots = jadwal.kuota;
 
       // Hitung booking aktif saat ini (bukan ditolak)
-      final activeBookings = await _service.getBookingByJadwalActive(booking.jadwalId);
+      final activeBookings = await _service.getBookingByJadwalActive(
+        booking.jadwalId,
+      );
       if (activeBookings.length >= totalSlots) {
         // Update status jadwal ke penuh di database
-        await _service.updateStatusJadwal(booking.jadwalId, 'penuh');
+        await _service.updateJadwalSisaSlotAndStatus(
+          booking.jadwalId,
+          0,
+          'penuh',
+        );
         return 'Maaf, seluruh slot pada jadwal ini telah penuh.';
       }
 
       // Simpan booking ke database
       final newId = await _service.insertBooking(booking);
       if (newId > 0) {
-        // Cek jika sekarang sudah penuh, update status jadwal menjadi 'penuh'
-        final updatedActive = await _service.getBookingByJadwalActive(booking.jadwalId);
-        if (updatedActive.length >= totalSlots) {
-          await _service.updateStatusJadwal(booking.jadwalId, 'penuh');
-        }
+        // Hitung ulang booking aktif & sisa slot setelah booking baru
+        final updatedActive = await _service.getBookingByJadwalActive(
+          booking.jadwalId,
+        );
+        final newSisaSlot = totalSlots - updatedActive.length;
+        final newStatus = newSisaSlot <= 0 ? 'penuh' : 'tersedia';
+        await _service.updateJadwalSisaSlotAndStatus(
+          booking.jadwalId,
+          newSisaSlot,
+          newStatus,
+        );
 
         // Tambahkan ke local list & invalidate cache
         _invalidateCache();
@@ -168,7 +189,11 @@ class BookingProvider with ChangeNotifier {
   }
 
   /// Update status booking (approved/rejected) oleh dosen
-  Future<bool> updateStatusBooking(int id, String status, String? catatan) async {
+  Future<bool> updateStatusBooking(
+    int id,
+    String status,
+    String? catatan,
+  ) async {
     try {
       await _service.updateStatusBooking(id, status, catatan);
 
@@ -179,16 +204,29 @@ class BookingProvider with ChangeNotifier {
           status: status,
           catatanStaf: catatan,
         );
-        notifyListeners();
       }
 
-      // Jika rejected, kembalikan jadwal ke status tersedia
-      if (status == 'rejected') {
-        final booking = idx != -1 ? _bookingList[idx] : await _service.getBookingById(id);
-        if (booking != null) {
-          await _service.updateStatusJadwal(booking.jadwalId, 'tersedia');
+      // Recompute sisa slot & status jadwal
+      final booking = idx != -1
+          ? _bookingList[idx]
+          : await _service.getBookingById(id);
+      if (booking != null) {
+        final jadwal = await _service.getJadwalById(booking.jadwalId);
+        if (jadwal != null) {
+          final activeBookings = await _service.getBookingByJadwalActive(
+            booking.jadwalId,
+          );
+          final newSisaSlot = jadwal.kuota - activeBookings.length;
+          final newStatus = newSisaSlot <= 0 ? 'penuh' : 'tersedia';
+          await _service.updateJadwalSisaSlotAndStatus(
+            booking.jadwalId,
+            newSisaSlot,
+            newStatus,
+          );
         }
       }
+
+      notifyListeners();
       return true;
     } catch (e) {
       return false;

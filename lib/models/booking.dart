@@ -2,10 +2,10 @@ class Booking {
   final String id;
   final String studentId;
   final String lecturerId;
-  final String date;       // e.g., "Senin, 24 Mei 2026"
-  final String timeSlot;   // e.g., "10:00 WIB"
-  final String purpose;    // Consultation details
-  final String status;     // 'Pending', 'Approved', 'Rejected', 'Completed'
+  final String date; // e.g., "Senin, 24 Mei 2026"
+  final String timeSlot; // e.g., "10:00 WIB"
+  final String purpose; // Consultation details
+  final String status; // 'Pending', 'Approved', 'Rejected', 'Completed'
 
   Booking({
     required this.id,
@@ -17,16 +17,14 @@ class Booking {
     required this.status,
   });
 
-  Booking copyWith({
-    String? status,
-  }) {
+  Booking copyWith({String? status}) {
     return Booking(
-      id: this.id,
-      studentId: this.studentId,
-      lecturerId: this.lecturerId,
-      date: this.date,
-      timeSlot: this.timeSlot,
-      purpose: this.purpose,
+      id: id,
+      studentId: studentId,
+      lecturerId: lecturerId,
+      date: date,
+      timeSlot: timeSlot,
+      purpose: purpose,
       status: status ?? this.status,
     );
   }

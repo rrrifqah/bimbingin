@@ -53,9 +53,16 @@ class TargetProvider with ChangeNotifier {
   }
 
   Future<bool> upsertTarget(
-      int mahasiswaId, String targetSelesai, int createdBy) async {
+    int mahasiswaId,
+    String targetSelesai,
+    int createdBy,
+  ) async {
     try {
-      final result = await _service.upsertTarget(mahasiswaId, targetSelesai, createdBy);
+      final result = await _service.upsertTarget(
+        mahasiswaId,
+        targetSelesai,
+        createdBy,
+      );
       if (result > 0) {
         _targetMahasiswa = await _service.getTargetByMahasiswa(mahasiswaId);
         notifyListeners();
